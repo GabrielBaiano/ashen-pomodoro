@@ -842,11 +842,15 @@ static void start_ambient_sound(bool is_dark_souls, int volume_pct) {
                     if (music_pos >= firelink_total_samples) music_pos = 0;
                 }
 
+                float fire_gain = 1.45f;
+                float music_gain = 0.09f;
                 float mixed;
                 if (cur_track == MUSIC_TRACK_NONE) {
-                    mixed = fire_s * vol_factor;
+                    mixed = fire_s * fire_gain * vol_factor;
                 } else {
-                    mixed = (fire_s * 0.35f + music_s * 0.85f) * vol_factor;
+                    // Fire ambience (crackle / white noise) is front and center;
+                    // Lofi slowed music sits gently as a soft, warm atmospheric backdrop.
+                    mixed = (fire_s * fire_gain + music_s * music_gain) * vol_factor;
                 }
 
                 if (mixed > 32767.0f) mixed = 32767.0f;
@@ -5288,8 +5292,8 @@ static bool run_setup_menu(void) {
             vol_str);
 
         // Row 6: Dark Souls Music
-        const char *bgm_str = (bgm == MUSIC_TRACK_GWYN) ? "Gwyn (Plim Plim Plom)" :
-                              (bgm == MUSIC_TRACK_FIRELINK) ? "Firelink Shrine" : "Off (Crackle Only)";
+        const char *bgm_str = (bgm == MUSIC_TRACK_GWYN) ? "Gwyn (Lofi Slowed)" :
+                              (bgm == MUSIC_TRACK_FIRELINK) ? "Firelink (Lofi)" : "Off (Crackle Only)";
         len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
             "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-23s ►          \033[0m\033[48;2;16;10;8m║\033[0m",
             start_r + 11, start_c,

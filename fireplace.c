@@ -6644,6 +6644,782 @@ static void sync_volume_config(void) {
     save_user_config(style, focus_min, short_break_min, long_break_min, sessions, g_sound_volume, (int)g_music_track);
 }
 
+/* ============================================================================
+ * Dark Souls BBS-Style ANSI Backdrop for the Setup Menu
+ * Uses half-blocks (▀▄█) for crisp gothic spires, Darksign eclipse & Kiln
+ * swords, paired with CP437 dithering blocks (░▒▓) and \033[49m transparency
+ * so outer sky & flame halos blend cleanly over transparent terminals.
+ * ============================================================================ */
+
+#define MENU_MAX_COLS 260
+#define MENU_MAX_ROWS 100
+
+typedef struct {
+    uint8_t r, g, b;
+    uint8_t solid;   // 0 = transparent sky, 1 = opaque geometry
+    uint8_t mat;     // 0 = none, 1 = stone, 2 = darksign/flame, 3 = ash, 4 = sword, 5 = void
+    uint8_t dither;  // 0 = clean half-block, 1 = ░, 2 = ▒, 3 = ▓ (uses dr,dg,db as secondary)
+    uint8_t dr, dg, db;
+} MenuSubPx;
+
+typedef struct {
+    uint8_t fg_r, fg_g, fg_b;
+    uint8_t bg_r, bg_g, bg_b;
+    uint8_t has_bg;  // 0 = transparent (\033[49m), 1 = opaque RGB bg
+    uint8_t glyph;   // 0=' ', 1='░', 2='▒', 3='▓', 4='█', 5='▀', 6='▄', 7='·'
+    uint8_t prio;    // layering priority for transparent overlays
+} MenuAnsiCell;
+
+static MenuSubPx s_menu_sub[MENU_MAX_ROWS * 2][MENU_MAX_COLS];
+static MenuAnsiCell s_menu_cells[MENU_MAX_ROWS][MENU_MAX_COLS];
+static char s_menu_buf[1048576];
+
+static inline float menu_clampf(float v, float lo, float hi) {
+    return (v < lo) ? lo : ((v > hi) ? hi : v);
+}
+
+static inline uint8_t menu_u8(float v) {
+    if (v <= 0.0f) return 0;
+    if (v >= 255.0f) return 255;
+    return (uint8_t)(v + 0.5f);
+}
+
+static inline float menu_hash2(int x, int y) {
+    uint32_t h = ((uint32_t)x * 374761393u) ^ ((uint32_t)y * 668265263u);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    h ^= (h >> 16);
+    return (float)(h & 0xFFFFu) / 65535.0f;
+}
+
+static void menu_set_sub(int x, int py, int cols, int ph,
+                         uint8_t r, uint8_t g, uint8_t b, uint8_t mat,
+                         uint8_t dither, uint8_t dr, uint8_t dg, uint8_t db) {
+    if (x < 0 || x >= cols || py < 0 || py >= ph) return;
+    MenuSubPx *p = &s_menu_sub[py][x];
+    p->r = r;
+    p->g = g;
+    p->b = b;
+    p->solid = 1;
+    p->mat = mat;
+    p->dither = dither;
+    p->dr = dr;
+    p->dg = dg;
+    p->db = db;
+}
+
+static void menu_set_trans_cell(int c, int r, int cols, int rows,
+                                uint8_t glyph, uint8_t fg_r, uint8_t fg_g, uint8_t fg_b,
+                                uint8_t prio) {
+    if (c < 0 || c >= cols || r < 0 || r >= rows) return;
+    MenuAnsiCell *cell = &s_menu_cells[r][c];
+    if (prio < cell->prio) return;
+    cell->fg_r = fg_r;
+    cell->fg_g = fg_g;
+    cell->fg_b = fg_b;
+    cell->has_bg = 0;
+    cell->glyph = glyph;
+    cell->prio = prio;
+}
+
+static void menu_draw_sword(int cols, int ph, float base_x, float base_y,
+                            float length, float angle_rad, float half_w,
+                            float cx, bool is_coiled) {
+    (void)half_w;
+    float dir_x = sinf(angle_rad);
+    float dir_y = -cosf(angle_rad); // upward
+    float perp_x = -dir_y;
+    float perp_y = dir_x;
+    float lit_sign = (base_x < cx) ? 1.0f : -1.0f; // side facing center fire
+
+    int steps = (int)(length * 3.0f) + 8;
+    for (int i = 0; i <= steps; i++) {
+        float u = (float)i / (float)steps; // 0 = base in ash, 1 = pommel tip
+        float dist = u * length;
+        float coil = is_coiled ? sinf(u * 14.0f) * 0.48f * (1.0f - u * 0.45f) : 0.0f;
+        float px_c = base_x + dir_x * dist + perp_x * coil;
+        float py_c = base_y + dir_y * dist + perp_y * coil;
+
+        int sx = (int)floorf(px_c + 0.5f);
+        int sy = (int)floorf(py_c + 0.5f);
+
+        if (u >= 0.90f) {
+            // Sharp metallic pommel
+            menu_set_sub(sx, sy, cols, ph, 244, 198, 122, 4, 0, 0, 0, 0);
+        } else if (u > 0.72f) {
+            // Narrow dark-wrapped hilt grip
+            menu_set_sub(sx, sy, cols, ph, 132, 92, 68, 4, 0, 0, 0, 0);
+        } else {
+            // Slender 1-pixel razor blade with steel highlight + shadow backing
+            if (is_coiled) {
+                // Gleaming coiled bonfire blade
+                uint8_t br = (i % 3 == 0) ? 255 : 226;
+                uint8_t bg = (i % 3 == 0) ? 236 : 186;
+                uint8_t bb = (i % 3 == 0) ? 178 : 132;
+                menu_set_sub(sx, sy, cols, ph, br, bg, bb, 4, 0, 0, 0, 0);
+                // Subtle dark iron edge on unlit side near base
+                if (u < 0.45f) {
+                    menu_set_sub(sx - 1, sy, cols, ph, 68, 52, 58, 4, 0, 0, 0, 0);
+                }
+            } else {
+                // Planted greatsword: bright fire-caught edge + cool steel shadow
+                menu_set_sub(sx, sy, cols, ph, 198, 152, 102, 4, 0, 0, 0, 0);
+                int sh_x = sx - (int)lit_sign;
+                if (u < 0.58f) {
+                    menu_set_sub(sh_x, sy, cols, ph, 46, 38, 48, 4, 0, 0, 0, 0);
+                }
+            }
+        }
+    }
+
+    // Crisp slender crossguard at u = 0.72
+    float gx_c = base_x + dir_x * (length * 0.72f);
+    float gy_c = base_y + dir_y * (length * 0.72f);
+    float guard_half = is_coiled ? 2.6f : 1.9f;
+    int g_steps = (int)(guard_half * 3.0f) + 2;
+    for (int k = -g_steps; k <= g_steps; k++) {
+        float off = ((float)k / (float)g_steps) * guard_half;
+        // Coiled sword has iconic curved/hooked crossguard
+        float droop = is_coiled ? (off * 0.22f + fabsf(off) * 0.14f) : (fabsf(off) * 0.08f);
+        int sx = (int)floorf(gx_c + perp_x * off - dir_x * droop + 0.5f);
+        int sy = (int)floorf(gy_c + perp_y * off - dir_y * droop + 0.5f);
+        bool bright = (off * perp_x * lit_sign >= 0.0f) || fabsf(off) < 0.7f;
+        if (bright) {
+            menu_set_sub(sx, sy, cols, ph, 248, 206, 124, 4, 0, 0, 0, 0);
+        } else {
+            menu_set_sub(sx, sy, cols, ph, 92, 66, 56, 4, 0, 0, 0, 0);
+        }
+    }
+}
+
+static void menu_draw_gothic_spire(int cols, int ph, float x_center, float tip_py,
+                                   float base_py, float base_half_w, float cx,
+                                   bool with_window, bool ruined_notch, bool with_buttress) {
+    int y0 = (int)floorf(tip_py);
+    int y1 = (int)ceilf(base_py);
+    if (y0 < 0) y0 = 0;
+    if (y1 >= ph) y1 = ph - 1;
+    float h = base_py - tip_py;
+    if (h < 2.0f) return;
+
+    for (int py = y0; py <= y1; py++) {
+        float u = (float)(py - y0) / h; // 0 = needle tip, 1 = base
+        float hw;
+        if (u < 0.36f) {
+            // Sharp Anor Londo gothic needle spire
+            hw = 0.45f + (u / 0.36f) * (base_half_w * 0.42f);
+        } else if (u < 0.44f) {
+            // Stepped turret cornice / gable flare
+            hw = base_half_w * 0.58f;
+        } else if (u < 0.72f) {
+            // Main tower shaft
+            hw = base_half_w * (0.56f + (u - 0.44f) * 0.55f);
+        } else {
+            // Wide gothic buttress base
+            hw = base_half_w * (0.72f + (u - 0.72f) * 1.15f);
+        }
+
+        // Optional ruined crenellation / broken stone notch on one shoulder
+        if (ruined_notch && u > 0.44f && u < 0.54f) {
+            hw *= 0.82f;
+        }
+
+        int x_min = (int)floorf(x_center - hw);
+        int x_max = (int)ceilf(x_center + hw);
+        for (int x = x_min; x <= x_max; x++) {
+            if (x < 0 || x >= cols) continue;
+
+            // Pointed gothic lancet window cutout in middle shaft
+            if (with_window && u > 0.49f && u < 0.68f) {
+                float wu = (u - 0.49f) / 0.19f;
+                float win_hw = (wu < 0.32f) ? (wu / 0.32f) * 1.05f : 1.05f;
+                if (fabsf((float)x - x_center) <= win_hw) {
+                    // Dim flickering amber candlelight inside cathedral lancet!
+                    uint8_t wr = (wu > 0.55f) ? 235 : 175;
+                    uint8_t wg = (wu > 0.55f) ? 132 : 72;
+                    uint8_t wb = (wu > 0.55f) ? 34 : 18;
+                    menu_set_sub(x, py, cols, ph, wr, wg, wb, 2, 2, 95, 32, 14);
+                    continue;
+                }
+            }
+
+            // Gothic stone masonry base (rim-light pass runs right after)
+            float fluting = (((x + (int)(x_center)) & 1) == 0) ? 1.0f : 0.78f;
+            uint8_t sr = menu_u8(28.0f * fluting);
+            uint8_t sg = menu_u8(22.0f * fluting);
+            uint8_t sb = menu_u8(30.0f * fluting);
+            uint8_t dith = (menu_hash2(x, py / 2) > 0.62f) ? 1 : 0;
+            menu_set_sub(x, py, cols, ph, sr, sg, sb, 1, dith, 16, 12, 18);
+        }
+    }
+
+    // Flying buttress arch bridging cleanly between outer and inner cathedral towers
+    if (with_buttress) {
+        float side = (x_center < cx) ? 1.0f : -1.0f;
+        float arch_y = tip_py + h * 0.64f;
+        float span = base_half_w * 2.1f;
+        for (int i = 0; i <= (int)(span * 2.0f); i++) {
+            float t = (float)i / (span * 2.0f + 0.001f);
+            int ax = (int)floorf(x_center + side * (base_half_w * 0.52f + t * span) + 0.5f);
+            int ay = (int)floorf(arch_y - sinf(t * (float)M_PI) * 3.4f + t * 2.2f + 0.5f);
+            menu_set_sub(ax, ay, cols, ph, 34, 26, 36, 1, 0, 0, 0, 0);
+            menu_set_sub(ax, ay + 1, cols, ph, 22, 17, 25, 1, 0, 0, 0, 0);
+        }
+    }
+}
+
+static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
+                                     int cols, int rows,
+                                     int start_r, int start_c, int box_w, int box_h,
+                                     float anim_t) {
+    if (cols > MENU_MAX_COLS) cols = MENU_MAX_COLS;
+    if (rows > MENU_MAX_ROWS) rows = MENU_MAX_ROWS;
+    if (cols < 20 || rows < 10) return 0;
+
+    int ph = rows * 2;
+    memset(s_menu_sub, 0, sizeof(s_menu_sub));
+    memset(s_menu_cells, 0, sizeof(s_menu_cells));
+
+    float cx = (float)cols * 0.5f;
+    int box_top_r = start_r - 1;          // 0-indexed row of top border
+    int box_bot_r = start_r - 1 + box_h - 1; // 0-indexed row of bottom border
+    int box_left_c = start_c - 1;         // 0-indexed col of left border
+    int box_right_c = start_c - 1 + box_w - 1;
+
+    float box_top_py = (float)(box_top_r * 2);
+    float box_bot_py = (float)((box_bot_r + 1) * 2);
+
+    // ------------------------------------------------------------------------
+    // 1. Darksign Eclipse geometry (centered in sky above setup box)
+    // ------------------------------------------------------------------------
+    bool has_top_sky = (box_top_r >= 4);
+    float ds_r = menu_clampf(box_top_py * 0.37f, 3.0f, 7.6f);
+    float ds_cy = has_top_sky ? (box_top_py * 0.45f) : 2.5f;
+    if (ds_cy < ds_r * 0.85f + 1.0f) ds_cy = ds_r * 0.85f + 1.0f;
+
+    // ------------------------------------------------------------------------
+    // 2. BBS Scattered ░ / ▒ Sky Texture (aCode-inspired floating block grid)
+    // ------------------------------------------------------------------------
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            // Clustered 3x2 BBS stipple tiles for authentic demoscene texture
+            int tx = c / 3;
+            int ty = r / 2;
+            float h_tile = menu_hash2(tx * 13 + 7, ty * 17 + 3);
+            float h_sub = menu_hash2(c * 29 + 11, r * 31 + 5);
+
+            float dx_c = ((float)c - cx) * 0.90f;
+            float dy_c = ((float)(r * 2 + 1) - ds_cy);
+            float dist_ds = sqrtf(dx_c * dx_c + dy_c * dy_c);
+
+            // Denser atmospheric BBS stipple in band flanking Darksign & spires
+            float near_ds = menu_clampf(1.0f - dist_ds / (ds_r * 4.5f + 16.0f), 0.0f, 1.0f);
+            float thresh = 0.855f - near_ds * 0.14f;
+
+            if (h_tile > thresh && h_sub > 0.28f) {
+                float warm = near_ds * 0.85f;
+                uint8_t sr = menu_u8(54.0f + warm * 78.0f);
+                uint8_t sg = menu_u8(44.0f + warm * 34.0f);
+                uint8_t sb = menu_u8(54.0f - warm * 24.0f);
+                menu_set_trans_cell(c, r, cols, rows, 1 /* ░ */, sr, sg, sb, 1);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. Darksign Fiery Corona + Sweeping BBS Flame Wings (transparent halo)
+    // ------------------------------------------------------------------------
+    if (has_top_sky) {
+        int corona_r_max = box_top_r + 1;
+        if (corona_r_max > rows) corona_r_max = rows;
+        for (int r = 0; r < corona_r_max; r++) {
+            float py_mid = (float)(r * 2) + 0.5f;
+            for (int c = 0; c < cols; c++) {
+                float dx = ((float)c - cx) * 0.92f;
+                float dy = py_mid - ds_cy;
+                float dist = sqrtf(dx * dx + dy * dy);
+                float ang = atan2f(dy, dx);
+
+                // Animated licking fire tongues around the Darksign
+                float lick = 0.15f * sinf(ang * 5.0f - anim_t * 2.6f)
+                           + 0.10f * sinf(ang * 9.0f + anim_t * 3.8f)
+                           + 0.07f * cosf(ang * 3.0f - anim_t * 1.4f);
+                // Flames reach slightly higher upward (dy < 0)
+                float up_boost = (dy < 0.0f) ? (-dy / (ds_r + 1.0f)) * 0.24f : 0.0f;
+                float norm_d = dist / (ds_r * (1.0f + lick + up_boost));
+
+                if (norm_d >= 0.92f && norm_d <= 2.15f) {
+                    float t_fade = 1.0f - (norm_d - 0.92f) / 1.23f;
+                    // Add coarse BBS flicker modulation
+                    float shimmer = 0.88f + 0.12f * sinf(anim_t * 4.5f + (float)c * 0.35f + (float)r * 0.6f);
+                    float glow = t_fade * shimmer;
+                    if (glow > 0.62f) {
+                        menu_set_trans_cell(c, r, cols, rows, 3 /* ▓ */, 248, 128, 22, 4);
+                    } else if (glow > 0.34f) {
+                        menu_set_trans_cell(c, r, cols, rows, 2 /* ▒ */, 205, 58, 16, 3);
+                    } else if (glow > 0.13f) {
+                        menu_set_trans_cell(c, r, cols, rows, 1 /* ░ */, 138, 34, 14, 2);
+                    }
+                }
+            }
+        }
+
+        // Sweeping ethereal BBS flame wisps drifting outward from the Darksign
+        float wing_span = menu_clampf((float)box_w * 0.38f, 14.0f, 28.0f);
+        for (int side = -1; side <= 1; side += 2) {
+            int w_steps = (int)(wing_span * 2.0f);
+            for (int i = 0; i <= w_steps; i++) {
+                float u = (float)i / (float)w_steps; // 0 near ring, 1 at outer tip
+                float wx = cx + (float)side * (ds_r * 0.92f + u * wing_span);
+                float wave = sinf(u * 4.8f - anim_t * 2.3f + (float)side * 0.6f) * 0.45f;
+                float wy = ds_cy + ds_r * 0.25f
+                         + sinf(u * (float)M_PI) * (box_top_py - ds_cy) * 0.34f
+                         - u * u * 3.6f + wave;
+                float thick = (1.0f - u * 0.92f) * 1.55f;
+
+                int ix = (int)floorf(wx + 0.5f);
+                int iy0 = (int)floorf(wy - thick);
+                int iy1 = (int)ceilf(wy + thick);
+                for (int py = iy0; py <= iy1; py++) {
+                    if (py < 0 || py >= (int)box_top_py) continue;
+                    float dy_w = (float)py - wy;
+                    float nd = fabsf(dy_w) / (thick + 0.01f);
+                    if (nd > 1.0f) continue;
+
+                    if (u < 0.46f && dy_w < -thick * 0.20f) {
+                        // Chiseled gold-white inner flare bevel
+                        menu_set_sub(ix, py, cols, ph, 255, 224, 122, 2, 0, 0, 0, 0);
+                    } else if (u < 0.60f && nd < 0.55f) {
+                        // Fiery orange ribbon core
+                        menu_set_sub(ix, py, cols, ph, 238, 96, 20, 2, 3, 172, 36, 14);
+                    } else {
+                        // Dissolving transparent BBS embers (▓ -> ▒ -> ░)
+                        int tr = py / 2;
+                        uint8_t g = (u < 0.68f) ? 3 : ((u < 0.85f) ? 2 : 1);
+                        uint8_t r_c = (u < 0.68f) ? 236 : ((u < 0.85f) ? 198 : 148);
+                        uint8_t g_c = (u < 0.68f) ? 104 : ((u < 0.85f) ? 52 : 30);
+                        menu_set_trans_cell(ix, tr, cols, rows, g, r_c, g_c, 16, 4);
+                    }
+                }
+            }
+        }
+
+        // High-res Darksign Eclipse Ring, Hollow Void & Bleeding Flame Drip
+        int py_start = 0;
+        int py_end = (int)box_top_py;
+        if (py_end > ph) py_end = ph;
+        for (int py = py_start; py < py_end; py++) {
+            for (int x = 0; x < cols; x++) {
+                float dx = ((float)x - cx) * 0.92f;
+                float dy = (float)py - ds_cy;
+                float dist = sqrtf(dx * dx + dy * dy);
+                float ang = atan2f(dy, dx);
+
+                float ring_wobble = 0.07f * sinf(ang * 4.0f - anim_t * 2.4f)
+                                  + 0.045f * sinf(ang * 8.0f + anim_t * 3.6f);
+                float r_eff = ds_r * (1.0f + ring_wobble);
+
+                // Bleeding vertical fire drip streaming down from bottom of Darksign
+                bool in_drip = false;
+                float drip_t = 0.0f;
+                if (dy > ds_r * 0.55f && (float)py < box_top_py) {
+                    float dlen = box_top_py - (ds_cy + ds_r * 0.55f);
+                    if (dlen > 0.5f) {
+                        drip_t = ((float)py - (ds_cy + ds_r * 0.55f)) / dlen;
+                        float sway = sinf((float)py * 0.65f - anim_t * 3.4f) * 0.45f * drip_t;
+                        float half_dw = (ds_r * 0.30f) * (1.0f - drip_t * 0.58f) + 0.55f;
+                        if (fabsf(dx - sway) <= half_dw) {
+                            in_drip = true;
+                        }
+                    }
+                }
+
+                if (in_drip) {
+                    float core = fabsf(dx) / (ds_r * 0.28f + 0.4f);
+                    if (core < 0.38f && drip_t < 0.85f) {
+                        menu_set_sub(x, py, cols, ph, 255, 244, 178, 2, 0, 0, 0, 0);
+                    } else if (core < 0.72f) {
+                        menu_set_sub(x, py, cols, ph, 255, 146, 26, 2, 3, 212, 58, 14);
+                    } else {
+                        menu_set_sub(x, py, cols, ph, 178, 34, 14, 2, 2, 95, 16, 10);
+                    }
+                } else if (dist < r_eff * 0.63f) {
+                    // Hollow Pitch Eclipse Core (with faint glowing inner edge)
+                    if (dist > r_eff * 0.54f) {
+                        menu_set_sub(x, py, cols, ph, 46, 14, 12, 5, 1, 14, 6, 8);
+                    } else {
+                        menu_set_sub(x, py, cols, ph, 10, 6, 10, 5, 0, 0, 0, 0);
+                    }
+                } else if (dist <= r_eff * 1.06f) {
+                    // Blazing Molten Darksign Ring with crisp BBS transitions
+                    float band = (dist - r_eff * 0.63f) / (r_eff * 0.43f);
+                    if (band < 0.24f) {
+                        // Incandescent white-gold inner lip
+                        menu_set_sub(x, py, cols, ph, 255, 248, 198, 2, 0, 0, 0, 0);
+                    } else if (band < 0.56f) {
+                        // Molten gold -> bright orange dither
+                        menu_set_sub(x, py, cols, ph, 255, 192, 46, 2, 3, 242, 104, 18);
+                    } else if (band < 0.84f) {
+                        // Fiery orange -> crimson dither
+                        menu_set_sub(x, py, cols, ph, 232, 78, 16, 2, 2, 152, 24, 12);
+                    } else {
+                        // Dark ember outer contour
+                        menu_set_sub(x, py, cols, ph, 138, 24, 12, 2, 1, 32, 10, 12);
+                    }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Anor Londo / Firelink Gothic Cathedral Spires (Left & Right Flanks)
+    // ------------------------------------------------------------------------
+    int margin_left = box_left_c;
+    int margin_right = cols - 1 - box_right_c;
+    float ground_anchor_py = (float)ph - 1.0f;
+
+    // Inner twin cathedral towers right beside menu box (visible even at 84 cols!)
+    if (margin_left >= 5) {
+        float lx = (float)box_left_c - menu_clampf((float)margin_left * 0.48f, 3.0f, 8.5f);
+        float tip = menu_clampf(box_top_py * 0.22f, 2.0f, 8.0f);
+        float bw = menu_clampf((float)margin_left * 0.42f, 2.4f, 5.2f);
+        menu_draw_gothic_spire(cols, ph, lx, tip, ground_anchor_py, bw, cx, (margin_left >= 8), false, false);
+    }
+    if (margin_right >= 5) {
+        float rx = (float)(box_right_c + 1) + menu_clampf((float)margin_right * 0.48f, 3.0f, 8.5f);
+        float tip = menu_clampf(box_top_py * 0.26f, 3.0f, 9.5f);
+        float bw = menu_clampf((float)margin_right * 0.42f, 2.4f, 5.2f);
+        menu_draw_gothic_spire(cols, ph, rx, tip, ground_anchor_py, bw, cx, (margin_right >= 8), true, false);
+    }
+
+    // Outer Grand Anor Londo spires on wider terminals (>= 104 cols) with flying buttresses bridging to inner towers
+    if (margin_left >= 17) {
+        float lx2 = (float)box_left_c - menu_clampf((float)margin_left * 0.80f, 15.0f, 26.0f);
+        float tip2 = menu_clampf(box_top_py * 0.10f, 1.0f, 5.0f);
+        float bw2 = menu_clampf((float)margin_left * 0.30f, 3.8f, 6.8f);
+        menu_draw_gothic_spire(cols, ph, lx2, tip2, ground_anchor_py, bw2, cx, true, true, true);
+
+        // Secondary flanking needle pinnacle
+        menu_draw_gothic_spire(cols, ph, lx2 + bw2 * 1.15f, tip2 + 7.0f, ground_anchor_py, 2.2f, cx, false, false, false);
+    }
+    if (margin_right >= 17) {
+        float rx2 = (float)(box_right_c + 1) + menu_clampf((float)margin_right * 0.80f, 15.0f, 26.0f);
+        float tip2 = menu_clampf(box_top_py * 0.14f, 2.0f, 6.0f);
+        float bw2 = menu_clampf((float)margin_right * 0.30f, 3.8f, 6.8f);
+        menu_draw_gothic_spire(cols, ph, rx2, tip2, ground_anchor_py, bw2, cx, true, false, true);
+
+        // Secondary flanking needle pinnacle
+        menu_draw_gothic_spire(cols, ph, rx2 - bw2 * 1.15f, tip2 + 6.0f, ground_anchor_py, 2.2f, cx, false, true, false);
+    }
+
+    // Firelit Chiseled Rim-Light Pass on Gothic Architecture (inner edge facing fire!)
+    for (int py = 0; py < ph; py++) {
+        for (int x = 0; x < cols; x++) {
+            MenuSubPx *p = &s_menu_sub[py][x];
+            if (!p->solid || p->mat != 1) continue;
+
+            int toward_cx = ((float)x < cx) ? 1 : -1;
+            int nx = x + toward_cx;
+            int ox = x - toward_cx;
+            bool air_inner = (nx >= 0 && nx < cols && (!s_menu_sub[py][nx].solid || s_menu_sub[py][nx].mat != 1));
+            bool air_top   = (py > 0 && (!s_menu_sub[py - 1][x].solid || s_menu_sub[py - 1][x].mat != 1));
+            bool air_outer = (ox >= 0 && ox < cols && !s_menu_sub[py][ox].solid);
+
+            float dx_c = fabsf((float)x - cx);
+            float fire_falloff = menu_clampf(1.0f - (dx_c - 30.0f) / 42.0f, 0.25f, 1.0f);
+
+            if (air_inner || air_top) {
+                // Crisp molten amber-gold rim light (BBS chiseled bevel!)
+                p->r = menu_u8(120.0f + 135.0f * fire_falloff);
+                p->g = menu_u8(58.0f + 112.0f * fire_falloff);
+                p->b = menu_u8(32.0f + 36.0f * fire_falloff);
+                p->dither = 0;
+            } else {
+                // Check 2nd-pixel bevel inward for smooth bronze transition
+                int nx2 = x + toward_cx * 2;
+                bool near_inner = (nx2 >= 0 && nx2 < cols && (!s_menu_sub[py][nx2].solid || s_menu_sub[py][nx2].mat != 1));
+                if (near_inner) {
+                    p->r = menu_u8(54.0f + 56.0f * fire_falloff);
+                    p->g = menu_u8(30.0f + 26.0f * fire_falloff);
+                    p->b = menu_u8(30.0f + 10.0f * fire_falloff);
+                    p->dither = 2; // ▒ BBS stone-to-fire dither
+                    p->dr = 28; p->dg = 20; p->db = 28;
+                } else if (air_outer) {
+                    // Razor dark outline on shadow edge
+                    p->r = 10; p->g = 8; p->b = 12;
+                    p->dither = 0;
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Kiln of the First Flame: Ash Hills, Ember Cracks & Planted Swords
+    // ------------------------------------------------------------------------
+    int bot_rows_avail = rows - (box_bot_r + 1);
+    if (bot_rows_avail >= 3) {
+        float avail_py = (float)(bot_rows_avail * 2);
+
+        // Compute undulating Kiln ash horizon crest for each column
+        float crest[MENU_MAX_COLS];
+        for (int x = 0; x < cols; x++) {
+            float u = ((float)x - cx) / ((float)cols * 0.5f + 1.0f); // -1..+1
+            // Hills rise toward left/right edges, dip gently under center for Coiled Sword
+            float mound_h = avail_py * (0.34f + 0.38f * u * u);
+            float undul = sinf((float)x * 0.14f + 0.8f) * 1.15f + cosf((float)x * 0.31f) * 0.55f;
+            float center_mound = expf(-u * u * 26.0f) * menu_clampf(avail_py * 0.22f, 1.5f, 3.8f);
+            float c_py = (float)ph - (mound_h + undul + center_mound);
+            if (c_py < box_bot_py + 1.5f) c_py = box_bot_py + 1.5f;
+            if (c_py > (float)ph - 2.0f) c_py = (float)ph - 2.0f;
+            crest[x] = c_py;
+        }
+
+        // Planted Kiln Greatswords in the flanking ash ridges (clean spaced silhouettes)
+        if (bot_rows_avail >= 5) {
+            float sw_len = menu_clampf(avail_py * 0.64f, 6.0f, 12.0f);
+            static const float sword_offsets[4] = { -0.52f, -0.25f, 0.26f, 0.54f };
+            static const float sword_angles[4]  = { -0.36f,  0.24f, -0.25f, 0.34f };
+            static const float sword_scales[4]  = {  1.04f,  0.86f,  0.88f, 1.06f };
+            for (int si = 0; si < 4; si++) {
+                float sx = cx + sword_offsets[si] * ((float)cols * 0.44f);
+                int isx = (int)floorf(sx + 0.5f);
+                if (isx < 2 || isx >= cols - 2) continue;
+                float base_y = crest[isx] + 1.2f;
+                float len_s = sw_len * sword_scales[si];
+                if (base_y - len_s < box_bot_py + 0.8f) {
+                    len_s = base_y - (box_bot_py + 0.8f);
+                }
+                if (len_s >= 4.5f) {
+                    menu_draw_sword(cols, ph, sx, base_y, len_s, sword_angles[si], 0.72f, cx, false);
+                }
+            }
+        }
+
+        // Rasterize Kiln Ash Ground + Molten Ember Veins
+        for (int x = 0; x < cols; x++) {
+            int y_crest = (int)floorf(crest[x]);
+            float u = fabsf(((float)x - cx) / ((float)cols * 0.5f + 1.0f));
+            float center_heat = expf(-u * u * 6.5f);
+
+            for (int py = y_crest; py < ph; py++) {
+                float depth = (float)(py - y_crest);
+                if (depth < 1.2f) {
+                    // Firelit ash crest rim
+                    uint8_t rr = menu_u8(62.0f + 178.0f * center_heat);
+                    uint8_t rg = menu_u8(48.0f + 86.0f * center_heat);
+                    uint8_t rb = menu_u8(52.0f - 18.0f * center_heat);
+                    menu_set_sub(x, py, cols, ph, rr, rg, rb, 3, 0, 0, 0, 0);
+                } else {
+                    // Glowing ember fissures running through charred ash
+                    float crack = sinf((float)x * 0.28f + (float)py * 0.55f)
+                                * cosf((float)x * 0.13f - (float)py * 0.42f);
+                    float pulse = 0.85f + 0.15f * sinf(anim_t * 3.2f + (float)x * 0.2f);
+                    if (crack > (0.64f - center_heat * 0.26f)) {
+                        uint8_t er = menu_u8((190.0f + 65.0f * center_heat) * pulse);
+                        uint8_t eg = menu_u8((52.0f + 95.0f * center_heat) * pulse);
+                        uint8_t eb = menu_u8(16.0f * pulse);
+                        menu_set_sub(x, py, cols, ph, er, eg, eb, 3, 2, 72, 20, 12);
+                    } else {
+                        uint8_t base_r = menu_u8(20.0f + 24.0f * center_heat);
+                        uint8_t base_g = menu_u8(16.0f + 12.0f * center_heat);
+                        uint8_t base_b = menu_u8(19.0f + 4.0f * center_heat);
+                        uint8_t dith = (menu_hash2(x, py / 2) > 0.55f) ? 1 : 0;
+                        menu_set_sub(x, py, cols, ph, base_r, base_g, base_b, 3, dith, 11, 9, 12);
+                    }
+                }
+            }
+        }
+
+        // Central Bonfire Coiled Sword + Living Mini-Flame directly beneath menu box!
+        if (bot_rows_avail >= 4) {
+            int icx = (int)cx;
+            float base_y = crest[icx] + 1.0f;
+            float coil_len = menu_clampf(base_y - (box_bot_py + 0.8f), 5.0f, 12.5f);
+            if (coil_len >= 5.0f) {
+                // Coiled sword slightly angled like an authentic Dark Souls bonfire
+                menu_draw_sword(cols, ph, cx, base_y, coil_len, 0.10f, 0.85f, cx, true);
+
+                // Animated licking bonfire flames flaring upward around both sides of the sword!
+                int f_r0 = (int)((base_y - coil_len * 0.88f) / 2.0f);
+                if (f_r0 <= box_bot_r) f_r0 = box_bot_r + 1;
+                int f_r1 = (int)(base_y / 2.0f);
+                for (int r = f_r0; r <= f_r1; r++) {
+                    for (int dc = -8; dc <= 8; dc++) {
+                        int fc = icx + dc;
+                        float dy_f = (float)(f_r1 - r) / (float)(f_r1 - f_r0 + 1);
+                        float sway = sinf(anim_t * 5.2f + dy_f * 4.2f) * 1.15f * dy_f;
+                        float spread = (1.0f - dy_f * 0.65f) * 6.8f;
+                        float dist_f = fabsf((float)dc - sway) / (spread + 0.1f);
+                        if (dist_f < 1.0f) {
+                            float flick = 0.78f + 0.22f * sinf(anim_t * 7.5f + (float)dc * 1.3f - (float)r * 1.9f);
+                            float heat = (1.0f - dist_f) * (1.0f - dy_f * 0.35f) * flick;
+                            if (heat > 0.52f) {
+                                menu_set_trans_cell(fc, r, cols, rows, 3 /* ▓ */, 255, 224, 96, 6);
+                            } else if (heat > 0.26f) {
+                                menu_set_trans_cell(fc, r, cols, rows, 2 /* ▒ */, 248, 114, 22, 5);
+                            } else if (heat > 0.10f) {
+                                menu_set_trans_cell(fc, r, cols, rows, 1 /* ░ */, 196, 44, 14, 4);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Animated Rising Embers floating across the transparent sky
+    // ------------------------------------------------------------------------
+    for (int i = 0; i < 34; i++) {
+        float seed_x = menu_hash2(i * 19 + 3, 101);
+        float seed_t = menu_hash2(i * 23 + 7, 211);
+        float speed  = 0.055f + 0.075f * menu_hash2(i * 31 + 11, 307);
+        float life   = fmodf(anim_t * speed + seed_t, 1.0f);
+
+        float ex = seed_x * (float)cols + sinf(anim_t * 1.5f + seed_t * 18.0f) * 2.8f;
+        float ey = (1.0f - life) * (float)(rows - 1);
+        int ec = (int)floorf(ex);
+        int er = (int)floorf(ey);
+        if (ec < 0 || ec >= cols || er < 0 || er >= rows) continue;
+
+        float fade = sinf(life * (float)M_PI);
+        if (fade < 0.15f) continue;
+
+        uint8_t glyph = (fade > 0.72f && (i & 1)) ? 2 /* ▒ */ : ((fade > 0.42f) ? 1 /* ░ */ : 7 /* · */);
+        uint8_t er_c = menu_u8(185.0f + 70.0f * fade);
+        uint8_t eg_c = menu_u8(68.0f + 152.0f * fade * fade);
+        uint8_t eb_c = menu_u8(16.0f + 62.0f * fade * fade * fade);
+        menu_set_trans_cell(ec, er, cols, rows, glyph, er_c, eg_c, eb_c, 5);
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. Focused Ember Heat Glow where Darksign Drip & Bonfire meet Menu Box
+    // ------------------------------------------------------------------------
+    for (int dc = -12; dc <= 12; dc++) {
+        int fc = (int)cx + dc;
+        float falloff = 1.0f - fabsf((float)dc) / 13.0f;
+        float breathe = 0.82f + 0.18f * sinf(anim_t * 3.0f + (float)dc * 0.25f);
+        uint8_t g = (falloff > 0.58f) ? 2 /* ▒ */ : 1 /* ░ */;
+        uint8_t ar = menu_u8((110.0f + 135.0f * falloff) * breathe);
+        uint8_t ag = menu_u8((36.0f + 96.0f * falloff * falloff) * breathe);
+        uint8_t ab = menu_u8(16.0f * breathe);
+        if (box_top_r - 1 >= 0) {
+            menu_set_trans_cell(fc, box_top_r - 1, cols, rows, g, ar, ag, ab, 3);
+        }
+        if (box_bot_r + 1 < rows) {
+            menu_set_trans_cell(fc, box_bot_r + 1, cols, rows, 1 /* ░ */, ar, ag, ab, 2);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Composite Half-Blocks + BBS Dither Cells and Emit Optimized ANSI
+    // ------------------------------------------------------------------------
+    static const char *GLYPHS[8] = {
+        " ", "░", "▒", "▓", "█", "▀", "▄", "·"
+    };
+
+    int len = 0;
+    int cur_fg_r = -1, cur_fg_g = -1, cur_fg_b = -1;
+    int cur_has_bg = -1;
+    int cur_bg_r = -1, cur_bg_g = -1, cur_bg_b = -1;
+
+    for (int r = 0; r < rows; r++) {
+        if (len + 64 >= (int)buf_cap) break;
+
+        // Avoid scrolling on last column of last row
+        int max_c = (r == rows - 1) ? (cols - 1) : cols;
+        bool moved_cursor = false;
+
+        for (int c = 0; c < max_c; c++) {
+            // Leave the centered setup menu box completely untouched
+            if (r >= box_top_r && r <= box_bot_r && c >= box_left_c && c <= box_right_c) {
+                moved_cursor = false;
+                continue;
+            }
+
+            MenuSubPx *top = &s_menu_sub[r * 2][c];
+            MenuSubPx *bot = &s_menu_sub[r * 2 + 1][c];
+            MenuAnsiCell out;
+
+            if (top->solid && bot->solid) {
+                // Both halves solid: use BBS dither glyph if flagged & colors close, else crisp half-block!
+                int diff = abs((int)top->r - (int)bot->r)
+                         + abs((int)top->g - (int)bot->g)
+                         + abs((int)top->b - (int)bot->b);
+                if (top->dither > 0 && diff < 48) {
+                    out.glyph = top->dither; // 1=░, 2=▒, 3=▓
+                    out.fg_r = top->r;  out.fg_g = top->g;  out.fg_b = top->b;
+                    out.bg_r = top->dr; out.bg_g = top->dg; out.bg_b = top->db;
+                    out.has_bg = 1;
+                } else if (diff < 8) {
+                    out.glyph = 4; // █
+                    out.fg_r = top->r; out.fg_g = top->g; out.fg_b = top->b;
+                    out.bg_r = 0; out.bg_g = 0; out.bg_b = 0;
+                    out.has_bg = 0;
+                } else {
+                    out.glyph = 5; // ▀
+                    out.fg_r = top->r; out.fg_g = top->g; out.fg_b = top->b;
+                    out.bg_r = bot->r; out.bg_g = bot->g; out.bg_b = bot->b;
+                    out.has_bg = 1;
+                }
+            } else if (top->solid && !bot->solid) {
+                out.glyph = 5; // ▀ with transparent background!
+                out.fg_r = top->r; out.fg_g = top->g; out.fg_b = top->b;
+                out.has_bg = 0;
+            } else if (!top->solid && bot->solid) {
+                out.glyph = 6; // ▄ with transparent background!
+                out.fg_r = bot->r; out.fg_g = bot->g; out.fg_b = bot->b;
+                out.has_bg = 0;
+            } else {
+                out = s_menu_cells[r][c];
+            }
+
+            if (len + 64 >= (int)buf_cap) break;
+
+            if (!moved_cursor) {
+                len += snprintf(buf + len, buf_cap - (size_t)len, "\033[%d;%dH", r + 1, c + 1);
+                moved_cursor = true;
+            }
+
+            if (out.glyph == 0) {
+                if (cur_has_bg != 0) {
+                    len += snprintf(buf + len, buf_cap - (size_t)len, "\033[49m");
+                    cur_has_bg = 0;
+                }
+                buf[len++] = ' ';
+                continue;
+            }
+
+            if (out.has_bg) {
+                if (cur_has_bg != 1 || cur_bg_r != out.bg_r || cur_bg_g != out.bg_g || cur_bg_b != out.bg_b) {
+                    len += snprintf(buf + len, buf_cap - (size_t)len, "\033[48;2;%d;%d;%dm",
+                                    out.bg_r, out.bg_g, out.bg_b);
+                    cur_has_bg = 1;
+                    cur_bg_r = out.bg_r; cur_bg_g = out.bg_g; cur_bg_b = out.bg_b;
+                }
+            } else {
+                if (cur_has_bg != 0) {
+                    len += snprintf(buf + len, buf_cap - (size_t)len, "\033[49m");
+                    cur_has_bg = 0;
+                }
+            }
+
+            if (cur_fg_r != out.fg_r || cur_fg_g != out.fg_g || cur_fg_b != out.fg_b) {
+                len += snprintf(buf + len, buf_cap - (size_t)len, "\033[38;2;%d;%d;%dm",
+                                out.fg_r, out.fg_g, out.fg_b);
+                cur_fg_r = out.fg_r; cur_fg_g = out.fg_g; cur_fg_b = out.fg_b;
+            }
+
+            const char *g = GLYPHS[out.glyph];
+            while (*g) buf[len++] = *g++;
+        }
+    }
+
+    if (len + 8 < (int)buf_cap) {
+        len += snprintf(buf + len, buf_cap - (size_t)len, "\033[0m");
+    }
+    return len;
+}
+
 static bool run_setup_menu(void) {
     int selected = 0; // 0: Style, 1: Focus, 2: Short Break, 3: Long Break, 4: Sessions, 5: Volume, 6: Dark Souls Music
     bool in_menu = true;
@@ -6667,8 +7443,8 @@ static bool run_setup_menu(void) {
     if (g_shared_music_track) *g_shared_music_track = (int)g_music_track;
     if (g_shared_volume) *g_shared_volume = volume;
 
-    char menu_buf[8192];
     struct timespec ts = {0, 25000000L}; // 40 FPS
+    float menu_anim_t = 0.0f;
 
     safe_write(STDOUT_FILENO, "\033[2J\033[H", 7);
 
@@ -6680,10 +7456,10 @@ static bool run_setup_menu(void) {
         }
 
         int box_w = 66;
-        int box_h = 18;
-        int start_r = (g_term_rows - box_h) / 2;
+        int box_h = 17;
+        int start_r = (g_term_rows - box_h) / 2 + 1;
         if (start_r < 1) start_r = 1;
-        int start_c = (g_term_cols - box_w) / 2;
+        int start_c = (g_term_cols - box_w) / 2 + 1;
         if (start_c < 1) start_c = 1;
 
         char ch;
@@ -6771,33 +7547,37 @@ static bool run_setup_menu(void) {
         if (!in_menu) break;
 
         int len = 0;
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len, "\033[H");
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[H");
+        len += render_menu_ansi_backdrop(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                                         g_term_cols, g_term_rows,
+                                         start_r, start_c, box_w, box_h,
+                                         menu_anim_t);
 
         // Border & Header
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╔════════════════════════════════════════════════════════════════╗\033[0m",
             start_r, start_c);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;255;210;110m║                  BONFIRE POMODORO SETUP                        ║\033[0m",
             start_r + 1, start_c);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;180;120;60m║            Configure your session before kindling              ║\033[0m",
             start_r + 2, start_c);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╠════════════════════════════════════════════════════════════════╣\033[0m",
             start_r + 3, start_c);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m║                                                                ║\033[0m",
             start_r + 4, start_c);
 
         // Row 0: Style
         const char *style_str = (style == 2) ? "Bloodborne Hunter's Lamp" :
                                ((style == 1) ? "Dark Souls Bonfire" : "Classic Wood Fireplace");
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
             start_r + 5, start_c,
             (selected == 0) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
@@ -6808,7 +7588,7 @@ static bool run_setup_menu(void) {
         // Row 1: Focus
         char foc_str[32];
         snprintf(foc_str, sizeof(foc_str), "%d min", focus_min);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
             start_r + 6, start_c,
             (selected == 1) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
@@ -6819,7 +7599,7 @@ static bool run_setup_menu(void) {
         // Row 2: Short Break
         char sb_str[32];
         snprintf(sb_str, sizeof(sb_str), "%d min", short_break_min);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
             start_r + 7, start_c,
             (selected == 2) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
@@ -6830,7 +7610,7 @@ static bool run_setup_menu(void) {
         // Row 3: Long Break
         char lb_str[32];
         snprintf(lb_str, sizeof(lb_str), "%d min", long_break_min);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
             start_r + 8, start_c,
             (selected == 3) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
@@ -6841,7 +7621,7 @@ static bool run_setup_menu(void) {
         // Row 4: Sessions
         char sess_str[32];
         snprintf(sess_str, sizeof(sess_str), "%d sessions", sessions);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
             start_r + 9, start_c,
             (selected == 4) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
@@ -6853,7 +7633,7 @@ static bool run_setup_menu(void) {
         char vol_str[32];
         if (volume == 0) snprintf(vol_str, sizeof(vol_str), "Mute (0%%)");
         else snprintf(vol_str, sizeof(vol_str), "%d%%", volume);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
             start_r + 10, start_c,
             (selected == 5) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
@@ -6864,7 +7644,7 @@ static bool run_setup_menu(void) {
         // Row 6: Dark Souls Music
         const char *bgm_str = (bgm == MUSIC_TRACK_GWYN) ? "Gwyn (Lofi Slowed)" :
                               (bgm == MUSIC_TRACK_FIRELINK) ? "Firelink (Lofi)" : "Off (Crackle Only)";
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
             start_r + 11, start_c,
             (selected == 6) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
@@ -6872,27 +7652,28 @@ static bool run_setup_menu(void) {
             "[7] Dark Souls Music:",
             bgm_str);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m║                                                                ║\033[0m",
             start_r + 12, start_c);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╠════════════════════════════════════════════════════════════════╣\033[0m",
             start_r + 13, start_c);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;220;190;140m║ [↑/↓ or 1-7] Navigate  [←/→] Adjust  [Enter/Space] Start       ║\033[0m",
             start_r + 14, start_c);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;160;140;120m║ [Q] Exit                                                       ║\033[0m",
             start_r + 15, start_c);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╚════════════════════════════════════════════════════════════════╝\033[0m",
             start_r + 16, start_c);
 
-        safe_write(STDOUT_FILENO, menu_buf, len);
+        safe_write(STDOUT_FILENO, s_menu_buf, len);
+        menu_anim_t += 0.025f;
         nanosleep(&ts, NULL);
     }
 

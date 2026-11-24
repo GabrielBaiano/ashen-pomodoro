@@ -531,6 +531,7 @@ typedef enum {
 static SceneStyle g_scene_style = STYLE_DARK_SOULS;
 static bool g_is_dark_souls = true;
 static bool g_is_bloodborne = false;
+static bool g_style_forced = false;
 
 static Lamp3D g_lamp;
 static Messenger3D g_messengers[NUM_MESSENGERS];
@@ -6226,6 +6227,9 @@ static bool run_setup_menu(void) {
     int bgm = (int)g_music_track;
 
     load_user_config(&style, &focus_min, &short_break_min, &long_break_min, &sessions, &volume, &bgm);
+    if (g_style_forced) {
+        style = g_is_bloodborne ? 2 : (g_is_dark_souls ? 1 : 0);
+    }
     set_scene_style((SceneStyle)style);
     g_sound_volume = volume;
     g_sound_enabled = (volume > 0);
@@ -6530,12 +6534,15 @@ int main(int argc, char **argv) {
             }
         } else if (strcmp(argv[i], "--souls") == 0 || strcmp(argv[i], "--ds") == 0 || strcmp(argv[i], "--darksouls") == 0) {
             set_scene_style(STYLE_DARK_SOULS);
+            g_style_forced = true;
             g_bonfire_lit = false;
         } else if (strcmp(argv[i], "--bloodborne") == 0 || strcmp(argv[i], "--bb") == 0 || strcmp(argv[i], "--lamp") == 0 || strcmp(argv[i], "--hunter") == 0) {
             set_scene_style(STYLE_BLOODBORNE);
+            g_style_forced = true;
             g_bonfire_lit = false;
         } else if (strcmp(argv[i], "--classic") == 0 || strcmp(argv[i], "--fireplace") == 0) {
             set_scene_style(STYLE_CLASSIC_WOOD);
+            g_style_forced = true;
             g_bonfire_lit = false;
         } else if (strcmp(argv[i], "--bgm") == 0 && i + 1 < argc) {
             const char *b = argv[++i];
@@ -6582,6 +6589,7 @@ int main(int argc, char **argv) {
                 else if (strcasecmp(w, "cerejeira") == 0 || strcasecmp(w, "cherry") == 0) g_wood_type = 3;
             } else {
                 set_scene_style(STYLE_CLASSIC_WOOD);
+                g_style_forced = true;
                 g_bonfire_lit = false;
             }
         } else if (strcmp(argv[i], "--lit") == 0) {

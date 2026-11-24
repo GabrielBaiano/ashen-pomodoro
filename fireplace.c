@@ -485,6 +485,7 @@ typedef struct {
 typedef struct {
     RGB color;
     bool is_sky;
+    uint8_t shade; // 0: solid half-block, 1: light shade ░ (25%), 2: medium shade ▒ (50%), 3: dark shade ▓ (75%)
 } Pixel;
 
 // Terminal and render state
@@ -3872,6 +3873,7 @@ static void render_scene(void) {
     for (int y = 0; y < g_pixel_h; y++) {
         for (int x = 0; x < g_pixel_w; x++) {
             g_frame[y][x].is_sky = true;
+            g_frame[y][x].shade = 0;
             g_frame[y][x].color = COLOR_BLACK;
             g_id_buf[y][x] = 0;
             g_depth_buf[y][x] = 1e9f;
@@ -4160,22 +4162,22 @@ static void render_scene(void) {
                         float dz_c = gp_pt.z - g_lamp.lantern_pos.z;
                         float gp_r = sqrtf(dx_c * dx_c + dz_c * dz_c);
                         float ang = atan2f(dz_c, dx_c);
-                        float r_edge = 3.65f + 0.30f * sinf(ang * 3.0f + 0.6f) + 0.18f * cosf(ang * 5.0f);
-                        if (gp_r < r_edge) {
-                            static const float b4[4][4] = {
-                                { 0.0f/16.0f,  8.0f/16.0f,  2.0f/16.0f, 10.0f/16.0f},
-                                {12.0f/16.0f,  4.0f/16.0f, 14.0f/16.0f,  6.0f/16.0f},
-                                { 3.0f/16.0f, 11.0f/16.0f,  1.0f/16.0f,  9.0f/16.0f},
-                                {15.0f/16.0f,  7.0f/16.0f, 13.0f/16.0f,  5.0f/16.0f}
+                        float r_solid = 3.15f + 0.28f * sinf(ang * 3.0f + 0.6f) + 0.16f * cosf(ang * 5.0f);
+                        if (gp_r < r_solid) {
+                            closest_t = gp_t;
+                            ash_bed_pt = gp_pt;
+                            ash_bed_norm = (Vec3){0.0f, 1.0f, 0.0f};
+                            hit_type = 3;
+                        } else if (gp_r < r_solid + 1.25f && hit_type == 0) {
+                            // Semi-transparent misty flagstone fade (▒ -> ░) directly over transparent terminal!
+                            float f_out = (gp_r - r_solid) / 1.25f;
+                            g_frame[y][x].shade = (f_out < 0.45f) ? 2 : 1;
+                            float lit_m = g_bonfire_lit ? 1.0f : 0.65f;
+                            g_frame[y][x].color = (RGB){
+                                (uint8_t)(48.0f * lit_m),
+                                (uint8_t)(58.0f * lit_m),
+                                (uint8_t)(64.0f * lit_m)
                             };
-                            // Smooth ordered-dither dissolve at edge so transparent terminals have ZERO black rim
-                            float edge_alpha = fminf(1.0f, (r_edge - gp_r) / 1.05f);
-                            if (edge_alpha >= 0.99f || edge_alpha > (b4[y & 3][x & 3] + 0.03f)) {
-                                closest_t = gp_t;
-                                ash_bed_pt = gp_pt;
-                                ash_bed_norm = (Vec3){0.0f, 1.0f, 0.0f};
-                                hit_type = 3;
-                            }
                         }
                     }
                 }
@@ -4926,23 +4928,17 @@ static void render_scene(void) {
         }
     }
 
-    // 3b. Bloodborne Volumetric Ghostly Lantern Light Halo (Transparent-Terminal Friendly via Bayer Dithering!)
+    // 3b. Bloodborne Volumetric Ghostly Lantern Halo (Animated Semi-Transparent ░ ▒ ▓ Squares over Transparent BG!)
     if (g_is_bloodborne && g_bonfire_lit) {
-        static const float b4[4][4] = {
-            { 0.0f/16.0f,  8.0f/16.0f,  2.0f/16.0f, 10.0f/16.0f},
-            {12.0f/16.0f,  4.0f/16.0f, 14.0f/16.0f,  6.0f/16.0f},
-            { 3.0f/16.0f, 11.0f/16.0f,  1.0f/16.0f,  9.0f/16.0f},
-            {15.0f/16.0f,  7.0f/16.0f, 13.0f/16.0f,  5.0f/16.0f}
-        };
         Vec3 rel_l = vec3_sub(g_lamp.flame_pos, cam_pos);
         float lz_s = vec3_dot(rel_l, fwd);
         if (lz_s > 0.5f) {
             float lx_f = ((vec3_dot(rel_l, right) / world_w) + 0.5f) * (float)g_pixel_w;
             float ly_f = (0.5f - (vec3_dot(rel_l, up) / world_h)) * (float)g_pixel_h;
-            float rad_x = (float)g_pixel_h * 0.19f;
-            float rad_y = (float)g_pixel_h * 0.13f;
-            float bloom_strength = (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.35f : 0.85f)
-                                 * (0.92f + 0.08f * sinf(g_anim_time * 9.0f));
+            float pulse = 0.90f + 0.10f * sinf(g_anim_time * 3.4f) + 0.05f * cosf(g_anim_time * 7.8f);
+            float rad_x = (float)g_pixel_h * 0.34f * (0.96f + 0.05f * sinf(g_anim_time * 3.4f));
+            float rad_y = (float)g_pixel_h * 0.22f * (0.96f + 0.05f * cosf(g_anim_time * 2.9f));
+            float bloom_strength = (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.38f : 0.88f) * pulse;
 
             int y0 = (int)fmaxf(0.0f, ly_f - rad_y);
             int y1 = (int)fminf((float)(g_pixel_h - 1), ly_f + rad_y);
@@ -4957,26 +4953,25 @@ static void render_scene(void) {
                     if (d2 >= 1.0f) continue;
 
                     float d = sqrtf(d2);
-                    float glow = expf(-d2 * 5.0f) * (1.0f - d) * bloom_strength;
-                    if (glow < 0.03f) continue;
+                    // Subtle organic shimmer ripple along the semi-transparent halo boundary
+                    float shimmer = 0.045f * sinf(d * 9.0f - g_anim_time * 4.2f + atan2f(dy, dx) * 3.0f);
+                    float glow = expf(-d2 * 3.6f) * (1.0f - d) * bloom_strength + shimmer * (1.0f - d);
+                    if (glow < 0.040f) continue;
 
                     if (g_frame[y][x].is_sky) {
-                        // On sky/transparent cells: NEVER paint opaque dark black pixels!
-                        // Dissolve luminous ghostly pale blue-white aura tightly around the glass via 4x4 Bayer dithering.
-                        if (glow > 0.11f) {
-                            float dither_prob = fminf(1.0f, glow * 1.10f);
-                            if (dither_prob > (b4[y & 3][x & 3] + 0.08f)) {
-                                float t_col = fminf(1.0f, glow * 1.45f);
-                                g_frame[y][x].color = (RGB){
-                                    (uint8_t)fminf(255.0f, 92.0f  + 150.0f * t_col),
-                                    (uint8_t)fminf(255.0f, 112.0f + 140.0f * t_col),
-                                    (uint8_t)fminf(255.0f, 178.0f +  77.0f * t_col)
-                                };
-                                g_frame[y][x].is_sky = false;
-                            }
+                        // Semi-transparent Unicode shade squares (▓ 75%, ▒ 50%, ░ 25%) on transparent \033[49m background!
+                        uint8_t sh = (glow > 0.36f) ? 3 : ((glow > 0.14f) ? 2 : 1);
+                        if (sh >= g_frame[y][x].shade) {
+                            float t_col = fminf(1.0f, glow * 1.45f);
+                            g_frame[y][x].shade = sh;
+                            g_frame[y][x].color = (RGB){
+                                (uint8_t)fminf(255.0f, 66.0f  + 172.0f * t_col),
+                                (uint8_t)fminf(255.0f, 84.0f  + 162.0f * t_col),
+                                (uint8_t)fminf(255.0f, 152.0f + 103.0f * t_col)
+                            };
                         }
                     } else {
-                        // On existing 3D geometry (cage, roof, chains): add smooth ghostly rim bloom
+                        // On existing 3D geometry (cage, roof, bell, chains): add smooth ghostly rim bloom
                         float g_adj = glow;
                         if (g_id_buf[y][x] == OBJ_LAMP_BASE && g_depth_buf[y][x] < lz_s - 0.22f) {
                             g_adj *= 0.24f;
@@ -5236,6 +5231,26 @@ static int format_frame_buffer(char *buf, int buf_cap) {
             Pixel bot = g_frame[y_bot][x];
 
             if (top.is_sky && bot.is_sky) {
+                uint8_t s = (top.shade > bot.shade) ? top.shade : bot.shade;
+                if (s > 0) {
+                    RGB sc = (top.shade >= bot.shade) ? top.color : bot.color;
+                    if (sc.r != prev_fg_r || sc.g != prev_fg_g || sc.b != prev_fg_b) {
+                        n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
+                                     sc.r, sc.g, sc.b);
+                        if (n > 0) buf_len += n;
+                        prev_fg_r = sc.r; prev_fg_g = sc.g; prev_fg_b = sc.b;
+                    }
+                    if (!prev_bg_transp) {
+                        n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
+                        if (n > 0) buf_len += n;
+                        prev_bg_transp = true;
+                        prev_bg_r = prev_bg_g = prev_bg_b = -1;
+                    }
+                    const char *glyph = (s >= 3) ? "▓" : ((s == 2) ? "▒" : "░");
+                    n = snprintf(buf + buf_len, buf_cap - buf_len, "%s", glyph);
+                    if (n > 0) buf_len += n;
+                    continue;
+                }
                 if (!prev_bg_transp) {
                     n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
                     if (n > 0) buf_len += n;

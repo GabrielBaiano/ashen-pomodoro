@@ -37,10 +37,20 @@
 #include "sound_ds_ambient.h"
 #include "sound_wood_ambient.h"
 #include "sound_alert.h"
+#include "sound_gwyn.h"
+#include "sound_firelink.h"
+
+typedef enum {
+    MUSIC_TRACK_GWYN = 0,     // Gwyn, Lord of Cinder (Plim Plim Plom)
+    MUSIC_TRACK_FIRELINK = 1, // Firelink Shrine
+    MUSIC_TRACK_NONE = 2      // Desligado (Apenas crepitar da fogueira)
+} MusicTrack;
 
 static bool g_sound_enabled = true;
 static int g_sound_volume = 50; // 0-100% volume
 static int *g_shared_volume = NULL;
+static MusicTrack g_music_track = MUSIC_TRACK_GWYN;
+static int *g_shared_music_track = NULL;
 
 static void play_alert_sound(void);
 static void send_system_notification(const char *title, const char *msg);
@@ -749,6 +759,9 @@ static void start_ambient_sound(bool is_dark_souls, int volume_pct) {
     if (g_shared_volume) {
         *g_shared_volume = volume_pct;
     }
+    if (g_shared_music_track) {
+        *g_shared_music_track = (int)g_music_track;
+    }
 
     pid_t pid = fork();
     if (pid < 0) return;
@@ -788,34 +801,64 @@ static void start_ambient_sound(bool is_dark_souls, int volume_pct) {
 
         close(audio_pipe[0]);
 
-        const int16_t *src = (const int16_t *)(is_dark_souls ? assets_ds_fire_ambient_pcm : assets_wood_fire_ambient_pcm);
-        size_t total_samples = (is_dark_souls ? assets_ds_fire_ambient_pcm_len : assets_wood_fire_ambient_pcm_len) / sizeof(int16_t);
+        const int16_t *src_fire = (const int16_t *)(is_dark_souls ? assets_ds_fire_ambient_pcm : assets_wood_fire_ambient_pcm);
+        size_t total_samples_fire = (is_dark_souls ? assets_ds_fire_ambient_pcm_len : assets_wood_fire_ambient_pcm_len) / sizeof(int16_t);
+
+        const int16_t *gwyn_src = (const int16_t *)assets_gwyn_theme_pcm;
+        size_t gwyn_total_samples = assets_gwyn_theme_pcm_len / sizeof(int16_t);
+
+        const int16_t *firelink_src = (const int16_t *)assets_firelink_theme_pcm;
+        size_t firelink_total_samples = assets_firelink_theme_pcm_len / sizeof(int16_t);
+
+        size_t fire_pos = 0;
+        size_t music_pos = 0;
+        int last_track = -1;
 
         int16_t chunk[1024];
         while (1) {
-            size_t sample_pos = 0;
-            while (sample_pos < total_samples) {
-                int cur_vol = (g_shared_volume != NULL) ? *g_shared_volume : volume_pct;
-                if (cur_vol < 0) cur_vol = 0;
-                if (cur_vol > 100) cur_vol = 100;
-                float v_norm = (float)cur_vol / 100.0f;
-                // Perceptual quadratic curve: matches standard OS volume sliders and human ear sensitivity
-                float vol_factor = v_norm * v_norm;
-                size_t batch = total_samples - sample_pos;
-                if (batch > 1024) batch = 1024;
-                for (size_t i = 0; i < batch; i++) {
-                    float s = (float)src[sample_pos + i] * vol_factor;
-                    if (s > 32767.0f) s = 32767.0f;
-                    if (s < -32768.0f) s = -32768.0f;
-                    chunk[i] = (int16_t)s;
+            int cur_vol = (g_shared_volume != NULL) ? *g_shared_volume : volume_pct;
+            if (cur_vol < 0) cur_vol = 0;
+            if (cur_vol > 100) cur_vol = 100;
+            float v_norm = (float)cur_vol / 100.0f;
+            float vol_factor = v_norm * v_norm;
+
+            int cur_track = (g_shared_music_track != NULL) ? *g_shared_music_track : (int)g_music_track;
+            if (cur_track != last_track) {
+                last_track = cur_track;
+                music_pos = 0; // Inicia nova faixa de forma limpa
+            }
+
+            size_t batch = 1024;
+            for (size_t i = 0; i < batch; i++) {
+                float fire_s = (float)src_fire[fire_pos++];
+                if (fire_pos >= total_samples_fire) fire_pos = 0;
+
+                float music_s = 0.0f;
+                if (cur_track == MUSIC_TRACK_GWYN) {
+                    music_s = (float)gwyn_src[music_pos++];
+                    if (music_pos >= gwyn_total_samples) music_pos = 0;
+                } else if (cur_track == MUSIC_TRACK_FIRELINK) {
+                    music_s = (float)firelink_src[music_pos++];
+                    if (music_pos >= firelink_total_samples) music_pos = 0;
                 }
-                ssize_t written = write(audio_pipe[1], chunk, batch * sizeof(int16_t));
-                if (written <= 0) {
-                    close(audio_pipe[1]);
-                    waitpid(player, NULL, 0);
-                    _exit(0);
+
+                float mixed;
+                if (cur_track == MUSIC_TRACK_NONE) {
+                    mixed = fire_s * vol_factor;
+                } else {
+                    mixed = (fire_s * 0.35f + music_s * 0.85f) * vol_factor;
                 }
-                sample_pos += batch;
+
+                if (mixed > 32767.0f) mixed = 32767.0f;
+                if (mixed < -32768.0f) mixed = -32768.0f;
+                chunk[i] = (int16_t)mixed;
+            }
+
+            ssize_t written = write(audio_pipe[1], chunk, batch * sizeof(int16_t));
+            if (written <= 0) {
+                close(audio_pipe[1]);
+                waitpid(player, NULL, 0);
+                _exit(0);
             }
         }
         _exit(0);
@@ -4185,6 +4228,8 @@ static int format_frame_buffer(char *buf, int buf_cap) {
     char footer_buf[256];
     const char *snd_mode = (!g_sound_enabled || g_sound_volume == 0) ? "Muted" : "Sound";
     int snd_vol = (!g_sound_enabled) ? 0 : g_sound_volume;
+    const char *bgm_name = (g_music_track == MUSIC_TRACK_GWYN) ? "Gwyn" :
+                           (g_music_track == MUSIC_TRACK_FIRELINK) ? "Firelink" : "Off";
 
     if (g_modal_active != MODAL_NONE) {
         snprintf(footer_buf, sizeof(footer_buf),
@@ -4193,33 +4238,33 @@ static int format_frame_buffer(char *buf, int buf_cap) {
     } else if (g_fire_state == FIRE_STATE_UNLIT) {
         snprintf(footer_buf, sizeof(footer_buf),
             "\033[1;37m[E]\033[0m \033[38;2;255;200;90mKindle\033[0m   "
-            "\033[38;2;160;160;160m[Space] 360°   [M] %s   [-/+] %d%%   [Q] Quit\033[0m",
-            snd_mode, snd_vol);
+            "\033[38;2;160;160;160m[Space] 360°   [B] ♫ %s   [M] %s   [-/+] %d%%   [Q] Quit\033[0m",
+            bgm_name, snd_mode, snd_vol);
     } else if (g_fire_state == FIRE_STATE_SMOLDERING_REST) {
         snprintf(footer_buf, sizeof(footer_buf),
             "\033[1;37m[E]\033[0m \033[38;2;255;200;90mRekindle\033[0m   "
-            "\033[38;2;160;160;160m[Space] 360°   [P] %s   [M] %s   [-/+] %d%%   [S] Skip   [Q] Quit\033[0m",
+            "\033[38;2;160;160;160m[Space] 360°   [P] %s   [B] ♫ %s   [M] %s   [-/+] %d%%   [S] Skip   [Q] Quit\033[0m",
             g_pomodoro_paused ? "Resume" : "Pause",
-            snd_mode, snd_vol);
+            bgm_name, snd_mode, snd_vol);
     } else if (g_fire_state == FIRE_STATE_EXTINGUISHED) {
         snprintf(footer_buf, sizeof(footer_buf),
             "\033[1;37m[E]\033[0m \033[38;2;255;200;90mKindle New Cycle\033[0m   "
-            "\033[38;2;160;160;160m[Space] 360°   [M] %s   [-/+] %d%%   [Q] Quit\033[0m",
-            snd_mode, snd_vol);
+            "\033[38;2;160;160;160m[Space] 360°   [B] ♫ %s   [M] %s   [-/+] %d%%   [Q] Quit\033[0m",
+            bgm_name, snd_mode, snd_vol);
     } else {
         // Active LIT FOCUS
         if (g_is_dark_souls) {
             snprintf(footer_buf, sizeof(footer_buf),
                 "\033[1;37m[E]\033[0m \033[38;2;255;200;90mStoke\033[0m   "
-                "\033[38;2;160;160;160m[Space] 360°   [P] %s   [M] %s   [-/+] %d%%   [S] Skip   [Q] Quit\033[0m",
+                "\033[38;2;160;160;160m[Space] 360°   [P] %s   [B] ♫ %s   [M] %s   [-/+] %d%%   [S] Skip   [Q] Quit\033[0m",
                 g_pomodoro_paused ? "Resume" : "Pause",
-                snd_mode, snd_vol);
+                bgm_name, snd_mode, snd_vol);
         } else {
             snprintf(footer_buf, sizeof(footer_buf),
                 "\033[1;37m[F]\033[0m \033[38;2;255;200;90mWood\033[0m   "
-                "\033[38;2;160;160;160m[Space] 360°   [P] %s   [M] %s   [-/+] %d%%   [S] Skip   [Q] Quit\033[0m",
+                "\033[38;2;160;160;160m[Space] 360°   [P] %s   [B] ♫ %s   [M] %s   [-/+] %d%%   [S] Skip   [Q] Quit\033[0m",
                 g_pomodoro_paused ? "Resume" : "Pause",
-                snd_mode, snd_vol);
+                bgm_name, snd_mode, snd_vol);
         }
     }
 
@@ -4776,6 +4821,10 @@ static void handle_input(void) {
             g_pomodoro_elapsed = 0.0f;
             g_pomodoro_paused = false;
             init_scene();
+        } else if (ch == 'b' || ch == 'B') {
+            g_music_track = (MusicTrack)(((int)g_music_track + 1) % 3);
+            if (g_shared_music_track) *g_shared_music_track = (int)g_music_track;
+            sync_volume_config();
         } else if (ch == 'm' || ch == 'M') {
             g_sound_enabled = !g_sound_enabled;
             if (g_sound_enabled && g_sound_volume == 0) g_sound_volume = 50;
@@ -4972,7 +5021,7 @@ static void get_config_path(char *out_path, size_t max_len) {
     snprintf(out_path, max_len, "%s/.fireplace_conf", home);
 }
 
-static void load_user_config(int *style, int *focus_min, int *short_break_min, int *long_break_min, int *sessions, int *volume) {
+static void load_user_config(int *style, int *focus_min, int *short_break_min, int *long_break_min, int *sessions, int *volume, int *bgm) {
     char path[1024];
     get_config_path(path, sizeof(path));
     FILE *f = fopen(path, "r");
@@ -4993,12 +5042,14 @@ static void load_user_config(int *style, int *focus_min, int *short_break_min, i
             if (val >= 1 && val <= 24) *sessions = val;
         } else if (sscanf(line, "volume=%d", &val) == 1) {
             if (val >= 0 && val <= 100) *volume = val;
+        } else if (sscanf(line, "bgm=%d", &val) == 1) {
+            if (val >= 0 && val <= 2) *bgm = val;
         }
     }
     fclose(f);
 }
 
-static void save_user_config(int style, int focus_min, int short_break_min, int long_break_min, int sessions, int volume) {
+static void save_user_config(int style, int focus_min, int short_break_min, int long_break_min, int sessions, int volume, int bgm) {
     char path[1024];
     get_config_path(path, sizeof(path));
     FILE *f = fopen(path, "w");
@@ -5010,6 +5061,7 @@ static void save_user_config(int style, int focus_min, int short_break_min, int 
     fprintf(f, "long_break_min=%d\n", long_break_min);
     fprintf(f, "sessions=%d\n", sessions);
     fprintf(f, "volume=%d\n", volume);
+    fprintf(f, "bgm=%d\n", bgm);
     fclose(f);
 }
 
@@ -5019,11 +5071,11 @@ static void sync_volume_config(void) {
     int long_break_min = (int)(g_long_break_duration / 60.0f);
     int sessions = g_sessions_before_long_break;
     int style = g_is_dark_souls ? 1 : 0;
-    save_user_config(style, focus_min, short_break_min, long_break_min, sessions, g_sound_volume);
+    save_user_config(style, focus_min, short_break_min, long_break_min, sessions, g_sound_volume, (int)g_music_track);
 }
 
 static bool run_setup_menu(void) {
-    int selected = 0; // 0: Style, 1: Focus, 2: Short Break, 3: Long Break, 4: Sessions, 5: Volume
+    int selected = 0; // 0: Style, 1: Focus, 2: Short Break, 3: Long Break, 4: Sessions, 5: Volume, 6: Dark Souls Music
     bool in_menu = true;
 
     int focus_min = (int)(g_focus_duration / 60.0f);
@@ -5032,11 +5084,15 @@ static bool run_setup_menu(void) {
     int sessions = g_sessions_before_long_break;
     int style = g_is_dark_souls ? 1 : 0;
     int volume = g_sound_volume;
+    int bgm = (int)g_music_track;
 
-    load_user_config(&style, &focus_min, &short_break_min, &long_break_min, &sessions, &volume);
+    load_user_config(&style, &focus_min, &short_break_min, &long_break_min, &sessions, &volume, &bgm);
     g_is_dark_souls = (style == 1);
     g_sound_volume = volume;
     g_sound_enabled = (volume > 0);
+    g_music_track = (MusicTrack)bgm;
+    if (g_shared_music_track) *g_shared_music_track = (int)g_music_track;
+    if (g_shared_volume) *g_shared_volume = volume;
 
     char menu_buf[8192];
     struct timespec ts = {0, 25000000L}; // 40 FPS
@@ -5051,7 +5107,7 @@ static bool run_setup_menu(void) {
         }
 
         int box_w = 66;
-        int box_h = 17;
+        int box_h = 18;
         int start_r = (g_term_rows - box_h) / 2;
         if (start_r < 1) start_r = 1;
         int start_c = (g_term_cols - box_w) / 2;
@@ -5066,9 +5122,9 @@ static bool run_setup_menu(void) {
 
                 if (seq[0] == '[') {
                     if (seq[1] == 'A') { // Up
-                        selected = (selected + 5) % 6;
+                        selected = (selected + 6) % 7;
                     } else if (seq[1] == 'B') { // Down
-                        selected = (selected + 1) % 6;
+                        selected = (selected + 1) % 7;
                     } else if (seq[1] == 'D') { // Left
                         if (selected == 0) g_is_dark_souls = !g_is_dark_souls;
                         else if (selected == 1) { focus_min = (focus_min > 5) ? focus_min - 5 : 5; }
@@ -5076,6 +5132,7 @@ static bool run_setup_menu(void) {
                         else if (selected == 3) { long_break_min = (long_break_min > 5) ? long_break_min - 5 : 5; }
                         else if (selected == 4) { sessions = (sessions > 1) ? sessions - 1 : 1; }
                         else if (selected == 5) { volume = (volume >= 10) ? volume - 10 : 0; }
+                        else if (selected == 6) { bgm = (bgm + 2) % 3; g_music_track = (MusicTrack)bgm; if (g_shared_music_track) *g_shared_music_track = bgm; }
                     } else if (seq[1] == 'C') { // Right
                         if (selected == 0) g_is_dark_souls = !g_is_dark_souls;
                         else if (selected == 1) { focus_min = (focus_min < 120) ? focus_min + 5 : 120; }
@@ -5083,6 +5140,7 @@ static bool run_setup_menu(void) {
                         else if (selected == 3) { long_break_min = (long_break_min < 60) ? long_break_min + 5 : 60; }
                         else if (selected == 4) { sessions = (sessions < 12) ? sessions + 1 : 12; }
                         else if (selected == 5) { volume = (volume <= 90) ? volume + 10 : 100; }
+                        else if (selected == 6) { bgm = (bgm + 1) % 3; g_music_track = (MusicTrack)bgm; if (g_shared_music_track) *g_shared_music_track = bgm; }
                     } else if (strcmp(seq, "[200~") == 0) {
                         drain_bracketed_paste();
                     } else if (seq[1] == '<') {
@@ -5090,12 +5148,12 @@ static bool run_setup_menu(void) {
                         char mode = 'M';
                         if (sscanf(seq + 2, "%d;%d;%d%c", &btn, &mx, &my, &mode) >= 3 && mode == 'M') {
                             if (btn == 64) {
-                                selected = (selected + 5) % 6;
+                                selected = (selected + 6) % 7;
                             } else if (btn == 65) {
-                                selected = (selected + 1) % 6;
+                                selected = (selected + 1) % 7;
                             } else if (btn == 0) {
                                 int row_idx = my - (start_r + 5);
-                                if (row_idx >= 0 && row_idx <= 5) {
+                                if (row_idx >= 0 && row_idx <= 6) {
                                     selected = row_idx;
                                 }
                             } else if (btn == 1) {
@@ -5106,12 +5164,12 @@ static bool run_setup_menu(void) {
                     }
                 }
                 continue;
-            } else if (ch >= '1' && ch <= '6') {
+            } else if (ch >= '1' && ch <= '7') {
                 selected = ch - '1';
             } else if (ch == 'w' || ch == 'W' || ch == 'k' || ch == 'K') {
-                selected = (selected + 5) % 6;
+                selected = (selected + 6) % 7;
             } else if (ch == 's' || ch == 'S' || ch == 'j' || ch == 'J') {
-                selected = (selected + 1) % 6;
+                selected = (selected + 1) % 7;
             } else if (ch == 'a' || ch == 'A' || ch == 'h' || ch == '-' || ch == '_') {
                 if (selected == 0) g_is_dark_souls = !g_is_dark_souls;
                 else if (selected == 1) { focus_min = (focus_min > 5) ? focus_min - 5 : 5; }
@@ -5119,6 +5177,7 @@ static bool run_setup_menu(void) {
                 else if (selected == 3) { long_break_min = (long_break_min > 5) ? long_break_min - 5 : 5; }
                 else if (selected == 4) { sessions = (sessions > 1) ? sessions - 1 : 1; }
                 else if (selected == 5) { volume = (volume >= 10) ? volume - 10 : 0; }
+                else if (selected == 6) { bgm = (bgm + 2) % 3; g_music_track = (MusicTrack)bgm; if (g_shared_music_track) *g_shared_music_track = bgm; }
             } else if (ch == 'd' || ch == 'D' || ch == 'l' || ch == '+' || ch == '=') {
                 if (selected == 0) g_is_dark_souls = !g_is_dark_souls;
                 else if (selected == 1) { focus_min = (focus_min < 120) ? focus_min + 5 : 120; }
@@ -5126,6 +5185,7 @@ static bool run_setup_menu(void) {
                 else if (selected == 3) { long_break_min = (long_break_min < 60) ? long_break_min + 5 : 60; }
                 else if (selected == 4) { sessions = (sessions < 12) ? sessions + 1 : 12; }
                 else if (selected == 5) { volume = (volume <= 90) ? volume + 10 : 100; }
+                else if (selected == 6) { bgm = (bgm + 1) % 3; g_music_track = (MusicTrack)bgm; if (g_shared_music_track) *g_shared_music_track = bgm; }
             } else if (ch == '\n' || ch == '\r' || ch == ' ') {
                 in_menu = false;
                 break;
@@ -5227,25 +5287,36 @@ static bool run_setup_menu(void) {
             "[6] Sound Volume:",
             vol_str);
 
+        // Row 6: Dark Souls Music
+        const char *bgm_str = (bgm == MUSIC_TRACK_GWYN) ? "Gwyn (Plim Plim Plom)" :
+                              (bgm == MUSIC_TRACK_FIRELINK) ? "Firelink Shrine" : "Off (Crackle Only)";
         len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║                                                                ║\033[0m",
-            start_r + 11, start_c);
+            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-23s ►          \033[0m\033[48;2;16;10;8m║\033[0m",
+            start_r + 11, start_c,
+            (selected == 6) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
+            (selected == 6) ? "▶ " : "  ",
+            "[7] Dark Souls Music:",
+            bgm_str);
 
         len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╠════════════════════════════════════════════════════════════════╣\033[0m",
+            "\033[%d;%dH\033[48;2;16;10;8m║                                                                ║\033[0m",
             start_r + 12, start_c);
 
         len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;220;190;140m║ [↑/↓ or 1-6] Navigate  [←/→] Adjust  [Enter/Space] Start       ║\033[0m",
+            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╠════════════════════════════════════════════════════════════════╣\033[0m",
             start_r + 13, start_c);
 
         len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;160;140;120m║ [Q] Exit                                                       ║\033[0m",
+            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;220;190;140m║ [↑/↓ or 1-7] Navigate  [←/→] Adjust  [Enter/Space] Start       ║\033[0m",
             start_r + 14, start_c);
 
         len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╚════════════════════════════════════════════════════════════════╝\033[0m",
+            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;160;140;120m║ [Q] Exit                                                       ║\033[0m",
             start_r + 15, start_c);
+
+        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
+            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╚════════════════════════════════════════════════════════════════╝\033[0m",
+            start_r + 16, start_c);
 
         safe_write(STDOUT_FILENO, menu_buf, len);
         nanosleep(&ts, NULL);
@@ -5256,8 +5327,10 @@ static bool run_setup_menu(void) {
     // Apply configuration and persist to ~/.fireplace_conf
     g_sound_volume = volume;
     g_sound_enabled = (volume > 0);
+    g_music_track = (MusicTrack)bgm;
     if (g_shared_volume) *g_shared_volume = volume;
-    save_user_config(g_is_dark_souls ? 1 : 0, focus_min, short_break_min, long_break_min, sessions, volume);
+    if (g_shared_music_track) *g_shared_music_track = (int)g_music_track;
+    save_user_config(g_is_dark_souls ? 1 : 0, focus_min, short_break_min, long_break_min, sessions, volume, (int)g_music_track);
     g_focus_duration = (float)focus_min * 60.0f;
     g_short_break_duration = (float)short_break_min * 60.0f;
     g_long_break_duration = (float)long_break_min * 60.0f;
@@ -5277,6 +5350,13 @@ int main(int argc, char **argv) {
         *g_shared_volume = g_sound_volume;
     } else {
         g_shared_volume = NULL;
+    }
+
+    g_shared_music_track = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (g_shared_music_track != MAP_FAILED) {
+        *g_shared_music_track = (int)g_music_track;
+    } else {
+        g_shared_music_track = NULL;
     }
 
     bool do_benchmark = false;
@@ -5311,6 +5391,16 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--souls") == 0 || strcmp(argv[i], "--ds") == 0 || strcmp(argv[i], "--darksouls") == 0) {
             g_is_dark_souls = true;
             g_bonfire_lit = false;
+        } else if (strcmp(argv[i], "--bgm") == 0 && i + 1 < argc) {
+            const char *b = argv[++i];
+            if (strcasecmp(b, "gwyn") == 0 || strcasecmp(b, "plim") == 0) {
+                g_music_track = MUSIC_TRACK_GWYN;
+            } else if (strcasecmp(b, "firelink") == 0 || strcasecmp(b, "shrine") == 0) {
+                g_music_track = MUSIC_TRACK_FIRELINK;
+            } else if (strcasecmp(b, "off") == 0 || strcasecmp(b, "none") == 0) {
+                g_music_track = MUSIC_TRACK_NONE;
+            }
+            if (g_shared_music_track) *g_shared_music_track = (int)g_music_track;
         } else if (strcmp(argv[i], "--unlit") == 0) {
             force_unlit = true;
             g_bonfire_lit = false;

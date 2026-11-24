@@ -288,9 +288,10 @@ typedef struct {
 #define OBJ_SWORD 800
 #define MAX_BONES 80
 #define OBJ_BONE_BASE 900
-#define NUM_LAMP_POLE_SEGS 9
+#define NUM_LAMP_POLE_SEGS 8
 #define NUM_LAMP_RIBS 4
 #define NUM_LAMP_CHAINS 5
+#define NUM_LAMP_BELLS 3
 #define NUM_MESSENGERS 4
 #define OBJ_LAMP_BASE 700
 #define OBJ_MSGR_BASE 750
@@ -301,17 +302,26 @@ typedef struct {
 } LampSegment;
 
 typedef struct {
+    Vec3 apex;
+    Vec3 axis;
+    float length;
+    float r_top;
+    float r_bot;
+} LampBell;
+
+typedef struct {
     int obj_id;
     bool active;
-    Vec3 lantern_pos;                        // Center of hanging lantern glass chamber
+    Vec3 lantern_pos;                        // Center of hanging tapered lantern chamber
     Vec3 flame_pos;                          // Ethereal white-blue light core
-    LampSegment pole_segs[NUM_LAMP_POLE_SEGS]; // Crooked shepherd's crook post arching over
-    LampSegment straps[3];                   // Rope/iron binding wraps on crooked pole
-    Vec3 bell_pos;                           // Hanging tarnished brass bell near crook bend
-    LampSegment top_hook;                    // Suspension chain from crook tip to lantern crown
-    LampSegment bottom_chain;                // Thin vertical chain dangling below lantern
+    Vec3 capital_pos;                        // Ornate flared capital flange on the pole beside lantern
+    LampSegment pole_segs[NUM_LAMP_POLE_SEGS]; // Vertical post + diagonal angled gallows arm
+    LampSegment straps[3];                   // Rope/iron binding wraps along the diagonal arm
+    LampBell bells[NUM_LAMP_BELLS];          // Cluster of 3 antique brass bells at top tip
+    LampSegment top_hook;                    // Suspension chain from bell cluster down to lantern crown
+    LampSegment bottom_chain;                // Thin vertical chain dangling down between lantern and post
     LampSegment slack_chains[NUM_LAMP_CHAINS]; // Draped slack chain linking pole to lantern
-    LampSegment ribs[NUM_LAMP_RIBS];         // 4 slender vertical wrought-iron cage ribs
+    LampSegment ribs[NUM_LAMP_RIBS];         // 4 slanted tapered wrought-iron cage ribs
 } Lamp3D;
 
 typedef struct {
@@ -1528,30 +1538,30 @@ static void build_bloodborne_scene(void) {
     g_num_stones = 0;
     g_sword.active = false;
 
-    // 1. Authentic Bloodborne Hunter's Lamp: Crooked Rustic Pole Arching Over a Suspended Lantern
+    // 1. Authentic Bloodborne Hunter's Lamp: Pillar + Flared Capital + Diagonal Gallows Arm + 3 Brass Bells + Tapered Lantern
     g_lamp.active = true;
     g_lamp.obj_id = OBJ_LAMP_BASE;
 
-    float lx = 0.12f;
+    float lx = 0.14f;
     float lz = 0.00f;
-    g_lamp.lantern_pos = (Vec3){lx, 1.82f, lz};
-    g_lamp.flame_pos   = (Vec3){lx, 1.82f, lz};
+    g_lamp.lantern_pos = (Vec3){lx, 1.76f, lz};
+    g_lamp.flame_pos   = (Vec3){lx, 1.76f, lz};
+    g_lamp.capital_pos = (Vec3){-1.26f, 1.44f, 0.08f};
 
-    // Crooked shepherd's-crook wooden/iron post rising on the right (-X) and arching sharply left (+X)
+    // Lower vertical iron/stone pillar rising to capital flange, then straight-ish diagonal gallows arm shooting up-left to finial tip
     static const Vec3 pole_pts[NUM_LAMP_POLE_SEGS + 1] = {
-        {-1.46f, -4.25f,  0.18f},
-        {-1.42f, -2.55f,  0.14f},
-        {-1.44f, -0.85f,  0.11f},
-        {-1.50f,  0.75f,  0.08f},
-        {-1.42f,  2.10f,  0.06f},
-        {-1.18f,  3.22f,  0.04f},
-        {-0.72f,  4.08f,  0.02f},
-        {-0.20f,  4.66f,  0.00f},
-        { 0.16f,  4.58f,  0.00f},
-        { 0.40f,  4.32f,  0.00f}
+        {-1.24f, -4.25f,  0.14f},
+        {-1.28f, -2.35f,  0.12f},
+        {-1.30f, -0.45f,  0.10f},
+        {-1.26f,  1.42f,  0.08f}, // Flared architectural capital flange height
+        {-1.08f,  2.32f,  0.06f}, // Diagonal angled gallows arm begins
+        {-0.80f,  3.18f,  0.04f},
+        {-0.46f,  3.96f,  0.02f},
+        {-0.06f,  4.56f,  0.00f}, // Top tip where the 3 brass bells hang
+        { 0.04f,  4.86f,  0.00f}  // Pointed gothic finial knob at very top
     };
     static const float pole_rads[NUM_LAMP_POLE_SEGS] = {
-        0.18f, 0.17f, 0.16f, 0.16f, 0.15f, 0.14f, 0.13f, 0.12f, 0.09f
+        0.19f, 0.18f, 0.17f, 0.16f, 0.15f, 0.14f, 0.13f, 0.085f
     };
     for (int i = 0; i < NUM_LAMP_POLE_SEGS; i++) {
         g_lamp.pole_segs[i].p1 = pole_pts[i];
@@ -1559,44 +1569,63 @@ static void build_bloodborne_scene(void) {
         g_lamp.pole_segs[i].radius = pole_rads[i];
     }
 
-    // Iron/leather binding straps wrapped around the curved upper crook
-    g_lamp.straps[0] = (LampSegment){{-1.45f, 1.92f, 0.06f}, {-1.38f, 2.26f, 0.06f}, 0.22f};
-    g_lamp.straps[1] = (LampSegment){{-1.22f, 3.06f, 0.04f}, {-1.10f, 3.38f, 0.04f}, 0.21f};
-    g_lamp.straps[2] = (LampSegment){{-0.80f, 3.94f, 0.02f}, {-0.62f, 4.20f, 0.02f}, 0.19f};
+    // Thick diagonal iron/leather binding straps wrapping the angled upper arm
+    g_lamp.straps[0] = (LampSegment){{-1.12f, 2.18f, 0.06f}, {-1.02f, 2.48f, 0.06f}, 0.21f};
+    g_lamp.straps[1] = (LampSegment){{-0.86f, 3.02f, 0.04f}, {-0.72f, 3.34f, 0.04f}, 0.20f};
+    g_lamp.straps[2] = (LampSegment){{-0.52f, 3.80f, 0.02f}, {-0.38f, 4.10f, 0.02f}, 0.19f};
 
-    // Prominent antique tarnished brass bell hanging cleanly inside the upper crook arch
-    g_lamp.bell_pos = (Vec3){-0.36f, 3.98f, -0.10f};
+    // Cluster of 3 antique brass bells staggered at the top tip (exact Bloodborne asymmetrical silhouette!)
+    // Bell 0: Main upper-front round bell (bright golden circular rim + visible dark hollow center)
+    g_lamp.bells[0].apex   = (Vec3){ 0.02f, 4.62f, -0.04f};
+    g_lamp.bells[0].axis   = vec3_norm((Vec3){ 0.10f, -0.58f, -0.80f});
+    g_lamp.bells[0].length = 0.42f;
+    g_lamp.bells[0].r_top  = 0.14f;
+    g_lamp.bells[0].r_bot  = 0.38f;
 
-    // Top suspension hook/chain from crook tip down to lantern crown
-    g_lamp.top_hook = (LampSegment){{lx, 4.58f, lz}, {lx, 3.12f, lz}, 0.06f};
+    // Bell 1: Left-flaring wing bell staggered slightly lower & further left (+X) for clear separation
+    g_lamp.bells[1].apex   = (Vec3){ 0.24f, 4.28f,  0.02f};
+    g_lamp.bells[1].axis   = vec3_norm((Vec3){ 0.90f, -0.40f, -0.14f});
+    g_lamp.bells[1].length = 0.46f;
+    g_lamp.bells[1].r_top  = 0.10f;
+    g_lamp.bells[1].r_bot  = 0.28f;
 
-    // Thin vertical chain dangling straight down below the suspended lantern into the dark air
-    g_lamp.bottom_chain = (LampSegment){{lx, 0.45f, lz}, {lx, -1.75f, lz}, 0.048f};
+    // Bell 2: Lower-right bell tucked slightly lower under the angled arm
+    g_lamp.bells[2].apex   = (Vec3){-0.22f, 4.10f,  0.10f};
+    g_lamp.bells[2].axis   = vec3_norm((Vec3){-0.68f, -0.68f,  0.26f});
+    g_lamp.bells[2].length = 0.42f;
+    g_lamp.bells[2].r_top  = 0.10f;
+    g_lamp.bells[2].r_bot  = 0.26f;
 
-    // Draped catenary slack chain linking pole to lantern side
+    // Suspension chain dropping from the bell cluster down to the tall lantern crown
+    g_lamp.top_hook = (LampSegment){{lx, 4.20f, lz}, {lx, 3.30f, lz}, 0.055f};
+
+    // Thin vertical chain hanging straight down between lantern and pillar (like reference photo!)
+    g_lamp.bottom_chain = (LampSegment){{-0.42f, 1.18f, 0.05f}, {-0.42f, -1.85f, 0.05f}, 0.045f};
+
+    // Draped catenary slack chain linking upper angled arm/capital to lantern side
     static const Vec3 chain_pts[NUM_LAMP_CHAINS + 1] = {
-        {-1.36f, 2.15f, 0.06f},
-        {-1.22f, 1.50f, 0.05f},
-        {-0.96f, 1.08f, 0.04f},
-        {-0.72f, 1.12f, 0.03f},
-        {-0.56f, 1.32f, 0.02f},
-        {-0.48f, 1.55f, 0.01f}
+        {-1.18f, 2.02f, 0.06f},
+        {-1.06f, 1.48f, 0.05f},
+        {-0.84f, 1.10f, 0.04f},
+        {-0.64f, 1.12f, 0.03f},
+        {-0.50f, 1.32f, 0.02f},
+        {-0.40f, 1.56f, 0.01f}
     };
     for (int i = 0; i < NUM_LAMP_CHAINS; i++) {
         g_lamp.slack_chains[i].p1 = chain_pts[i];
         g_lamp.slack_chains[i].p2 = chain_pts[i + 1];
-        g_lamp.slack_chains[i].radius = 0.048f;
+        g_lamp.slack_chains[i].radius = 0.045f;
     }
 
-    // 4 slender vertical wrought-iron corner ribs around the suspended glass lantern chamber
-    float r_cage = 0.72f;
+    // 4 SLANTED corner wrought-iron ribs tapering inward from wide top (0.72) to narrower bottom (0.48)!
+    float r_cage_top = 0.72f;
+    float r_cage_bot = 0.48f;
     for (int k = 0; k < NUM_LAMP_RIBS; k++) {
         float angle = (float)k * ((float)M_PI * 0.5f) + ((float)M_PI * 0.25f);
-        float rx = lx + r_cage * cosf(angle);
-        float rz = lz + r_cage * sinf(angle);
-        g_lamp.ribs[k].p1 = (Vec3){rx, 1.20f, rz};
-        g_lamp.ribs[k].p2 = (Vec3){rx, 2.36f, rz};
-        g_lamp.ribs[k].radius = 0.065f;
+        float ca = cosf(angle), sa = sinf(angle);
+        g_lamp.ribs[k].p1 = (Vec3){lx + r_cage_bot * ca, 1.08f, lz + r_cage_bot * sa};
+        g_lamp.ribs[k].p2 = (Vec3){lx + r_cage_top * ca, 2.44f, lz + r_cage_top * sa};
+        g_lamp.ribs[k].radius = 0.060f;
     }
 
     // 2. The 4 Tall Skeletal Messengers emerging from the misty ground in an intimate circle under the lamp
@@ -2160,26 +2189,108 @@ static bool intersect_vertical_cone(float cx, float cz, float y_min, float y_max
     return false;
 }
 
+static bool intersect_bell(const LampBell *b, Vec3 ro, Vec3 rd,
+                           float *out_t, Vec3 *out_pt, Vec3 *out_norm, bool *out_interior) {
+    Vec3 ax = b->axis;
+    Vec3 ref = (fabsf(ax.y) < 0.85f) ? (Vec3){0.0f, 1.0f, 0.0f} : (Vec3){1.0f, 0.0f, 0.0f};
+    Vec3 u = vec3_norm(vec3_cross(ax, ref));
+    Vec3 v = vec3_cross(ax, u);
+
+    Vec3 rel = vec3_sub(ro, b->apex);
+    Vec3 lro = (Vec3){ vec3_dot(rel, u), vec3_dot(rel, ax), vec3_dot(rel, v) };
+    Vec3 lrd = (Vec3){ vec3_dot(rd,  u), vec3_dot(rd,  ax), vec3_dot(rd,  v) };
+
+    float dr = (b->r_bot - b->r_top) / b->length;
+    float c_r0 = b->r_top + dr * lro.y;
+    float c_rd = dr * lrd.y;
+
+    float qa = (lrd.x * lrd.x + lrd.z * lrd.z) - c_rd * c_rd;
+    float qb = 2.0f * ((lro.x * lrd.x + lro.z * lrd.z) - c_r0 * c_rd);
+    float qc = (lro.x * lro.x + lro.z * lro.z) - c_r0 * c_r0;
+
+    float best_t = 1e9f;
+    Vec3 best_pt = {0}, best_norm = {0, 1, 0};
+    bool is_int = false;
+    bool hit = false;
+
+    if (fabsf(qa) > 1e-6f) {
+        float disc = qb * qb - 4.0f * qa * qc;
+        if (disc >= 0.0f) {
+            float sdisc = sqrtf(disc);
+            float t0 = (-qb - sdisc) / (2.0f * qa);
+            float t1 = (-qb + sdisc) / (2.0f * qa);
+            if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+            for (int k = 0; k < 2; k++) {
+                float tc = (k == 0) ? t0 : t1;
+                if (tc > 0.1f && tc < best_t) {
+                    float ly = lro.y + lrd.y * tc;
+                    if (ly >= 0.0f && ly <= b->length) {
+                        float lx = lro.x + lrd.x * tc;
+                        float lz = lro.z + lrd.z * tc;
+                        float r_y = b->r_top + dr * ly;
+                        Vec3 lnorm = vec3_norm((Vec3){lx, -dr * r_y, lz});
+                        best_t = tc;
+                        best_pt = vec3_add(ro, vec3_scale(rd, tc));
+                        best_norm = vec3_norm(vec3_add(vec3_add(vec3_scale(u, lnorm.x), vec3_scale(ax, lnorm.y)), vec3_scale(v, lnorm.z)));
+                        is_int = false;
+                        hit = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Open bell mouth plane at ly == b->length: bright brass outer rim + dark hollow inner cavity!
+    if (fabsf(lrd.y) > 1e-5f) {
+        float tm = (b->length - lro.y) / lrd.y;
+        if (tm > 0.1f && tm < best_t) {
+            float lx = lro.x + lrd.x * tm;
+            float lz = lro.z + lrd.z * tm;
+            float r2 = lx * lx + lz * lz;
+            float rim_r = b->r_bot * 1.08f;
+            if (r2 <= rim_r * rim_r) {
+                best_t = tm;
+                best_pt = vec3_add(ro, vec3_scale(rd, tm));
+                best_norm = ax;
+                // Hollow dark mouth interior (except tiny brass clapper dot at very center r < 0.24*r_bot!)
+                float r = sqrtf(r2);
+                is_int = (r < b->r_bot * 0.72f && r > b->r_bot * 0.22f);
+                hit = true;
+            }
+        }
+    }
+
+    if (hit) {
+        *out_t = best_t;
+        *out_pt = best_pt;
+        *out_norm = best_norm;
+        *out_interior = is_int;
+        return true;
+    }
+    return false;
+}
+
 static bool intersect_lamp(const Lamp3D *lp, Vec3 ro, Vec3 rd,
                            float *out_t, Vec3 *out_pt, Vec3 *out_norm, int *out_part) {
     if (!lp->active) return false;
 
-    // Fast broad bounding capsule encompassing crooked pole + suspended lantern
+    // Fast broad bounding capsule encompassing pillar + diagonal arm + bell cluster + suspended lantern
     Vec3 b_pt, b_norm;
     float b_t;
-    if (!intersect_capsule((Vec3){-0.50f, -4.35f, 0.0f}, (Vec3){-0.50f, 4.65f, 0.0f}, 2.40f, ro, rd, &b_t, &b_pt, &b_norm)) {
+    if (!intersect_capsule((Vec3){-0.45f, -4.35f, 0.0f}, (Vec3){-0.45f, 4.95f, 0.0f}, 2.45f, ro, rd, &b_t, &b_pt, &b_norm)) {
         return false;
     }
 
     float best_t = 1e9f;
     Vec3 best_pt = {0}, best_norm = {0, 1, 0};
-    int best_part = 0; // 0: pole/iron/chains, 1: wax stub, 2: ornate dome/cup, 3: finial, 4: brass bell, 5: ghostly core
+    int best_part = 0; // 0: pole/iron/chains, 1: wax stub, 2: ornate dome/cup, 3: finial, 4: brass bell, 5: ghostly core, 6: dark bell interior
     bool hit = false;
 
     float lx = lp->lantern_pos.x;
     float lz = lp->lantern_pos.z;
 
-    // 1. Crooked rustic pole arching over to hang the lantern
+    // 1. Vertical pillar & diagonal angled gallows arm
     for (int i = 0; i < NUM_LAMP_POLE_SEGS; i++) {
         float t; Vec3 pt, norm;
         if (intersect_capsule(lp->pole_segs[i].p1, lp->pole_segs[i].p2, lp->pole_segs[i].radius, ro, rd, &t, &pt, &norm)) {
@@ -2187,7 +2298,19 @@ static bool intersect_lamp(const Lamp3D *lp, Vec3 ro, Vec3 rd,
         }
     }
 
-    // 2. Iron/leather binding straps wrapped around upper crook
+    // 1b. Ornate flared architectural capital flange on the vertical pole beside the lantern
+    {
+        float t; Vec3 pt, norm;
+        float cx = lp->capital_pos.x, cy = lp->capital_pos.y, cz = lp->capital_pos.z;
+        if (intersect_vertical_cone(cx, cz, cy - 0.18f, cy + 0.04f, 0.20f, 0.38f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        if (intersect_vertical_cylinder(cx, cz, cy + 0.04f, cy + 0.16f, 0.42f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+    }
+
+    // 2. Thick iron/leather binding straps wrapped along diagonal arm
     for (int i = 0; i < 3; i++) {
         float t; Vec3 pt, norm;
         if (intersect_capsule(lp->straps[i].p1, lp->straps[i].p2, lp->straps[i].radius, ro, rd, &t, &pt, &norm)) {
@@ -2195,29 +2318,19 @@ static bool intersect_lamp(const Lamp3D *lp, Vec3 ro, Vec3 rd,
         }
     }
 
-    // 3. Prominent hanging antique brass bell (hanger rod + crown + flared bell + lip rim + clapper)
-    {
-        float t; Vec3 pt, norm;
-        float bx = lp->bell_pos.x, by = lp->bell_pos.y, bz = lp->bell_pos.z;
-        // Short brass hanger stem linking crook to bell crown
-        if (intersect_capsule((Vec3){bx, by + 0.42f, bz}, (Vec3){bx, by + 0.20f, bz}, 0.065f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 4; hit = true; }
-        }
-        // Flared antique brass bell body
-        if (intersect_vertical_cone(bx, bz, by - 0.22f, by + 0.22f, 0.36f, 0.13f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 4; hit = true; }
-        }
-        // Wide flared brass bottom lip rim
-        if (intersect_vertical_cylinder(bx, bz, by - 0.28f, by - 0.20f, 0.40f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 4; hit = true; }
-        }
-        // Hanging brass clapper sphere underneath bell rim
-        if (intersect_capsule((Vec3){bx, by - 0.34f, bz}, (Vec3){bx, by - 0.34f, bz}, 0.11f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 4; hit = true; }
+    // 3. Cluster of 3 oriented antique brass bells at the top tip of the diagonal arm!
+    for (int b = 0; b < NUM_LAMP_BELLS; b++) {
+        float t; Vec3 pt, norm; bool is_int = false;
+        if (intersect_bell(&lp->bells[b], ro, rd, &t, &pt, &norm, &is_int)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm;
+                best_part = is_int ? 6 : 4;
+                hit = true;
+            }
         }
     }
 
-    // 4. Top suspension chain/rod & bottom dangling vertical chain & side slack chain
+    // 4. Suspension chain, vertical dangling chain & draped side slack chain
     {
         float t; Vec3 pt, norm;
         if (intersect_capsule(lp->top_hook.p1, lp->top_hook.p2, lp->top_hook.radius, ro, rd, &t, &pt, &norm)) {
@@ -2233,28 +2346,28 @@ static bool intersect_lamp(const Lamp3D *lp, Vec3 ro, Vec3 rd,
         }
     }
 
-    // 5. Suspended Lantern Crown & Ornate Gothic Domed Cap
+    // 5. Tall Ornate Tiered Gothic Lantern Cap (Filigree Crown + Pointed Dome + Flared Eaves)
     {
         float t; Vec3 pt, norm;
-        // Top finial ring
-        if (intersect_vertical_cylinder(lx, lz, 3.00f, 3.18f, 0.16f, ro, rd, &t, &pt, &norm)) {
+        // Top suspension ring finial
+        if (intersect_vertical_cylinder(lx, lz, 3.20f, 3.36f, 0.15f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 3; hit = true; }
         }
-        // Upper gothic dome spire
-        if (intersect_vertical_cone(lx, lz, 2.68f, 3.02f, 0.56f, 0.16f, ro, rd, &t, &pt, &norm)) {
+        // Tall pointed gothic spire crown
+        if (intersect_vertical_cone(lx, lz, 2.84f, 3.22f, 0.46f, 0.14f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
         }
-        // Lower flared bell eaves
-        if (intersect_vertical_cone(lx, lz, 2.40f, 2.70f, 0.94f, 0.54f, ro, rd, &t, &pt, &norm)) {
+        // Ornate domed mid-tier hood
+        if (intersect_vertical_cone(lx, lz, 2.52f, 2.86f, 0.80f, 0.44f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
         }
-        // Scalloped upper rim collar
-        if (intersect_vertical_cylinder(lx, lz, 2.32f, 2.42f, 0.96f, ro, rd, &t, &pt, &norm)) {
+        // Wide scalloped eaves cornice lip
+        if (intersect_vertical_cylinder(lx, lz, 2.42f, 2.52f, 0.88f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
         }
     }
 
-    // 6. Open Glass Chamber: 4 slender corner wrought-iron ribs
+    // 6. Tall Tapered Open Glass Chamber: 4 slanted inward-tapering wrought-iron corner ribs
     for (int k = 0; k < NUM_LAMP_RIBS; k++) {
         float t; Vec3 pt, norm;
         if (intersect_capsule(lp->ribs[k].p1, lp->ribs[k].p2, lp->ribs[k].radius, ro, rd, &t, &pt, &norm)) {
@@ -2262,36 +2375,40 @@ static bool intersect_lamp(const Lamp3D *lp, Vec3 ro, Vec3 rd,
         }
     }
 
-    // 7. Interior Candle Stub & Blinding Ghostly Ethereal Core (when lit!)
+    // 7. Interior Candle Stub & Tall Blazing Two-Tone Ghostly Core (when lit!)
     {
         float t; Vec3 pt, norm;
-        if (intersect_vertical_cylinder(lx, lz, 1.24f, 1.46f, 0.14f, ro, rd, &t, &pt, &norm)) {
+        if (intersect_vertical_cylinder(lx, lz, 1.12f, 1.38f, 0.13f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 1; hit = true; }
         }
         if (g_bonfire_lit) {
-            float sway = sinf(g_anim_time * 9.0f) * 0.03f;
-            float core_r = (g_fire_state == FIRE_STATE_SMOLDERING_REST) ? 0.16f : 0.25f;
-            Vec3 c_p1 = (Vec3){lx, 1.56f, lz};
-            Vec3 c_p2 = (Vec3){lx + sway, 2.02f, lz};
+            float sway = sinf(g_anim_time * 9.0f) * 0.025f;
+            float core_r = (g_fire_state == FIRE_STATE_SMOLDERING_REST) ? 0.15f : 0.24f;
+            Vec3 c_p1 = (Vec3){lx, 1.44f, lz};
+            Vec3 c_p2 = (Vec3){lx + sway, 2.18f, lz};
             if (intersect_capsule(c_p1, c_p2, core_r, ro, rd, &t, &pt, &norm)) {
                 if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 5; hit = true; }
             }
         }
     }
 
-    // 8. Ornate Tapered Bottom Cup Bowl & Pointed Drop Finial
+    // 8. Ornate Ribbed Bottom Gallery Bowl & Scalloped Gothic Drop Finial
     {
         float t; Vec3 pt, norm;
-        // Lower collar rim
-        if (intersect_vertical_cylinder(lx, lz, 1.14f, 1.25f, 0.86f, ro, rd, &t, &pt, &norm)) {
+        // Narrower lower collar rim (matching tapered cage bottom!)
+        if (intersect_vertical_cylinder(lx, lz, 0.98f, 1.10f, 0.62f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
         }
-        // Tapered iron cup bowl underneath
-        if (intersect_vertical_cone(lx, lz, 0.72f, 1.15f, 0.30f, 0.80f, ro, rd, &t, &pt, &norm)) {
+        // Ornate bulged gallery band
+        if (intersect_vertical_cone(lx, lz, 0.78f, 0.99f, 0.54f, 0.66f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
         }
-        // Pointed bottom finial drop
-        if (intersect_vertical_cone(lx, lz, 0.44f, 0.73f, 0.06f, 0.24f, ro, rd, &t, &pt, &norm)) {
+        // Tapered scalloped bottom cup
+        if (intersect_vertical_cone(lx, lz, 0.56f, 0.79f, 0.20f, 0.54f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        // Pointed gothic drop finial
+        if (intersect_vertical_cone(lx, lz, 0.34f, 0.57f, 0.05f, 0.18f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 3; hit = true; }
         }
     }
@@ -4702,12 +4819,19 @@ static void render_scene(void) {
                 g_depth_buf[y][x] = vec3_dot(vec3_sub(lamp_pt, cam_pos), fwd);
 
                 if (lamp_part == 5) {
-                    // Blinding ghostly cold white-blue ethereal core inside the hanging lantern
+                    // Blinding two-tone ghostly lantern core: warm cream top highlight + pure white core + cold ice-blue edge
                     Vec3 v_dir = vec3_norm(vec3_sub(cam_pos, lamp_pt));
                     float ndotv = fmaxf(0.0f, vec3_dot(lamp_norm, v_dir));
-                    int f_idx = (ndotv > 0.50f) ? 4 : ((ndotv > 0.22f) ? 3 : 2);
-                    if (g_fire_state == FIRE_STATE_SMOLDERING_REST && f_idx > 2) f_idx--;
-                    g_shade_buf[y][x] = PALETTE_BB_FLAME[f_idx];
+                    if (lamp_pt.y > 2.10f && g_fire_state != FIRE_STATE_SMOLDERING_REST) {
+                        g_shade_buf[y][x] = (RGB){252, 245, 214}; // Warm pale ivory-gold reflection under hood
+                    } else {
+                        int f_idx = (ndotv > 0.48f) ? 4 : ((ndotv > 0.20f) ? 3 : 2);
+                        if (g_fire_state == FIRE_STATE_SMOLDERING_REST && f_idx > 2) f_idx--;
+                        g_shade_buf[y][x] = PALETTE_BB_FLAME[f_idx];
+                    }
+                } else if (lamp_part == 6) {
+                    // Deep dark hollow mouth interior inside the antique brass bells
+                    g_shade_buf[y][x] = (RGB){26, 22, 16};
                 } else {
                     Vec3 l_vec = vec3_sub(light_pos, lamp_pt);
                     float l_dist = vec3_len(l_vec);
@@ -4729,10 +4853,10 @@ static void render_scene(void) {
                     float light_val = ndotl * atten * light_intensity * 2.6f + moon_diff * moon_scale + front_amb + spec;
 
                     if (lamp_part == 4) {
-                        // Prominent antique tarnished brass bell hanging under the crooked arch
-                        float bell_lit = 1.4f + moon_diff * 1.4f + ndotl * atten * light_intensity * 1.6f + spec * 1.5f;
+                        // Cluster of 3 antique tarnished brass bells gleaming at the top tip of the diagonal arm
+                        float bell_lit = 1.6f + moon_diff * 1.4f + ndotl * atten * light_intensity * 1.5f + spec * 1.6f;
                         int b_idx = (int)(bell_lit);
-                        if (b_idx < 1) b_idx = 1;
+                        if (b_idx < 2) b_idx = 2;
                         if (b_idx > 4) b_idx = 4;
                         g_shade_buf[y][x] = PALETTE_BB_BRASS[b_idx];
                     } else if (lamp_part == 1) {

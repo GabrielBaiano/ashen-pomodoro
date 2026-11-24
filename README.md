@@ -12,11 +12,11 @@ A Dark Souls-inspired physical bonfire Pomodoro timer rendered in 3D TrueColor A
 ## The Experience
 
 - **Kindle the Flame**: Press `[E]` to light the unlit bonfire. The coiled sword heats up, sparks burst in a radial explosion, and a roaring fire erupts around the skull bone mound.
-- **Ambient Sound**: Authentic crackling bonfire audio streams directly into PipeWire / PulseAudio / ALSA via embedded 16-bit PCM with seamless crossfading.
+- **Dark Souls OST & Ambient Sound**: Embedded soundtracks (*Gwyn, Lord of Cinder* / "Plim Plim Plom" and *Firelink Shrine*) play mixed with crackling bonfire audio. The music automatically cuts off the moment the focus timer reaches 25 minutes and transitions to rest.
 - **Cycle Transitions**: When your focus session ends, the authentic Dark Souls *Item Discovery* chime rings, an on-screen banner appears, and the fire settles into smoldering embers for your break.
 - **Desktop Notifications**: Background desktop alerts via `notify-send` and terminal bell (`\a`) keep you on track even when the window is behind your editor or on another workspace.
 - **Continuous 360° Orbit**: Hit `Space` at any moment to toggle a continuous turntable camera loop orbiting the 3D coiled sword and flame.
-- **Smart Mute**: Muting (`[M]`) silences ambient crackling while keeping the end-of-cycle chime audible at a subtle, non-intrusive volume (~15%).
+- **Smart Mute & Track Selector**: Press `[B]` to switch between Gwyn, Firelink Shrine, or crackle-only. Muting (`[M]`) silences ambient audio while keeping the end-of-cycle chime audible (~15%).
 
 ## Installation
 
@@ -54,6 +54,12 @@ cd packaging/aur
 makepkg -si
 ```
 
+### Homebrew (macOS & Linux)
+
+```bash
+brew install GabrielBaiano/tap/bonfire-pomodoro
+```
+
 ## CLI Usage
 
 ```bash
@@ -62,6 +68,9 @@ bonfire
 
 # Direct launch into Dark Souls Bonfire mode
 bonfire --souls
+
+# Choose background music track (gwyn, firelink, or off)
+bonfire --souls --bgm gwyn
 
 # Set custom focus duration (in minutes)
 bonfire --souls --time 25
@@ -86,6 +95,7 @@ bonfire --fast
 | `Mouse Wheel` | Tilt camera pitch (or `↑`/`↓`) |
 | `[P]` | Pause / resume current Pomodoro phase |
 | `[S]` | Skip phase (prompts confirmation dialog) |
+| `[B]` | Cycle soundtrack (Gwyn -> Firelink Shrine -> Off) |
 | `[M]` | Mute / unmute ambient audio (keeps subtle alert chime) |
 | `[` / `]` or `-` / `+` | Decrease / increase sound volume (10% steps) |
 | `←` / `→` or `a` / `d` or `h` / `l` | Orbit camera yaw (rotate left/right) |

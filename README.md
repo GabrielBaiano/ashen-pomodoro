@@ -48,6 +48,12 @@ cd packaging/aur
 makepkg -si
 ```
 
+### Homebrew (macOS & Linux)
+
+```bash
+brew install GabrielBaiano/tap/bonfire-pomodoro
+```
+
 ## CLI Usage
 
 ```bash

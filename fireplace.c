@@ -235,31 +235,49 @@ static const RGB PALETTE_BONE[] = {
     {252, 248, 238}   // 4: Chalky bone highlight
 };
 
-// Bloodborne Victorian Wrought-Iron Palette (Dark gothic cast iron with slate-blue sheen)
+// Bloodborne Victorian Wrought-Iron & Dark Weathered Wood Pole Palette
 static const RGB PALETTE_GOTHIC_IRON[] = {
-    {12, 10, 15},     // 0: Deep gothic iron shadow
-    {26, 24, 34},     // 1: Dark slate-charcoal wrought iron
-    {52, 48, 64},     // 2: Weathered Victorian iron
-    {88, 82, 104},    // 3: Highlighted iron rib / bevel
-    {145, 138, 168}   // 4: Cold moonlight specular reflection
+    {10, 11, 16},     // 0: Pitch-dark iron shadow
+    {26, 28, 38},     // 1: Dark oxidized iron / weathered dark wood
+    {52, 56, 72},     // 2: Slate-grey weathered iron
+    {90, 98, 122},    // 3: Lantern-lit steel edge
+    {162, 174, 208}   // 4: Cold ghostly blue-silver specular highlight
 };
 
-// Bloodborne Messengers Palette (Ghastly pale skeletal alabaster)
+// Bloodborne Messengers Palette (Ghastly pale bone-ivory / parchment alabaster)
 static const RGB PALETTE_MESSENGER[] = {
-    {10, 8, 14},      // 0: Deep hollow eye void
-    {48, 44, 58},     // 1: Dark shadowed crevice
-    {115, 110, 130},  // 2: Ghastly pale flesh / bone
-    {175, 170, 192},  // 3: Alabaster skin
-    {230, 225, 245}   // 4: Spectral highlight
+    {8, 8, 12},       // 0: Deep hollow eye socket / mouth void
+    {42, 42, 48},     // 1: Deep ribcage / underside chiaroscuro shadow
+    {110, 108, 110},  // 2: Shadowed pale grey bone/flesh
+    {178, 176, 172},  // 3: Ghastly pale ivory skin
+    {238, 238, 242}   // 4: Bright top-lit alabaster cranium / clavicle
 };
 
-// Bloodborne Spectral Mist & Lantern Glow Palette
+// Bloodborne Ghostly Lantern Core & Ethereal Flame Palette (Cold White -> Ice Blue -> Indigo)
+static const RGB PALETTE_BB_FLAME[] = {
+    {38,  48,  88},   // 0: Misty midnight blue aura
+    {84, 102, 162},   // 1: Pale ghostly indigo-blue
+    {150, 168, 224},  // 2: Luminous silver-lavender wisp
+    {218, 228, 252},  // 3: Blinding ice-white halo
+    {255, 255, 255}   // 4: Pure ghostly white core
+};
+
+// Bloodborne Spectral Dust Motes Palette (Soft pale blue-white / silver mist)
 static const RGB PALETTE_SPECTRAL[] = {
-    {24, 12, 38},     // 0: Deep night ether mist
-    {58, 28, 88},     // 1: Violet spectral haze
-    {112, 64, 160},   // 2: Luminous lavender fog
-    {170, 120, 230},  // 3: Bright ethereal glow
-    {240, 215, 255}   // 4: Core spectral light
+    {45,  55,  92},   // 0: Dim night mote
+    {90, 106, 158},   // 1: Cold slate-blue mote
+    {146, 164, 218},  // 2: Pale silver-blue wisp
+    {200, 214, 248},  // 3: Bright ghostly dust
+    {244, 248, 255}   // 4: Pure white spectral spark
+};
+
+// Tarnished Antique Brass Bell Palette
+static const RGB PALETTE_BB_BRASS[] = {
+    {38, 32, 18},     // 0: Dark tarnished bronze
+    {82, 70, 38},     // 1: Aged brass shadow
+    {135, 118, 66},   // 2: Antique gold-brass
+    {185, 166, 102},  // 3: Lit brass rim
+    {230, 214, 155}   // 4: Specular brass glint
 };
 
 typedef struct {
@@ -270,7 +288,9 @@ typedef struct {
 #define OBJ_SWORD 800
 #define MAX_BONES 80
 #define OBJ_BONE_BASE 900
-#define NUM_LAMP_RIBS 6
+#define NUM_LAMP_POLE_SEGS 9
+#define NUM_LAMP_RIBS 4
+#define NUM_LAMP_CHAINS 5
 #define NUM_MESSENGERS 4
 #define OBJ_LAMP_BASE 700
 #define OBJ_MSGR_BASE 750
@@ -283,27 +303,28 @@ typedef struct {
 typedef struct {
     int obj_id;
     bool active;
-    Vec3 base_p1, base_p2;       // Stepped octagonal stone/iron base
-    Vec3 plinth_p1, plinth_p2;   // Plinth
-    Vec3 shaft_p1, shaft_p2;     // Main iron post
-    Vec3 collar1_p1, collar1_p2; // Lower ring
-    Vec3 collar2_p1, collar2_p2; // Mid baluster
-    Vec3 capital_p1, capital_p2; // Top lantern bracket
-    Vec3 floor_p1, floor_p2;     // Lantern bottom plate
-    Vec3 candle_p1, candle_p2;   // Wax candle
-    Vec3 flame_pos;              // Candle flame center
-    LampSegment ribs[NUM_LAMP_RIBS]; // Vertical wrought-iron cage ribs
-    Vec3 roof_p1, roof_p2;       // Gothic canopy/hood
-    Vec3 finial_p1, finial_p2;   // Gothic spire/finial
+    Vec3 lantern_pos;                        // Center of hanging lantern glass chamber
+    Vec3 flame_pos;                          // Ethereal white-blue light core
+    LampSegment pole_segs[NUM_LAMP_POLE_SEGS]; // Crooked shepherd's crook post arching over
+    LampSegment straps[3];                   // Rope/iron binding wraps on crooked pole
+    Vec3 bell_pos;                           // Hanging tarnished brass bell near crook bend
+    LampSegment top_hook;                    // Suspension chain from crook tip to lantern crown
+    LampSegment bottom_chain;                // Thin vertical chain dangling below lantern
+    LampSegment slack_chains[NUM_LAMP_CHAINS]; // Draped slack chain linking pole to lantern
+    LampSegment ribs[NUM_LAMP_RIBS];         // 4 slender vertical wrought-iron cage ribs
 } Lamp3D;
 
 typedef struct {
     int obj_id;
     Vec3 head_pos;
     float head_radius;
+    Vec3 jaw_pos;
+    float jaw_radius;
+    Vec3 neck_p1, neck_p2;
+    Vec3 shoulder_l, shoulder_r;
     Vec3 torso_p1, torso_p2;
-    Vec3 arm_l_p1, arm_l_p2;
-    Vec3 arm_r_p1, arm_r_p2;
+    Vec3 elbow_l, hand_l;
+    Vec3 elbow_r, hand_r;
     float yaw;
 } Messenger3D;
 
@@ -1506,112 +1527,150 @@ static void build_bloodborne_scene(void) {
     g_num_stones = 0;
     g_sword.active = false;
 
-    // 1. Victorian Wrought-Iron Lamp Structure
+    // 1. Authentic Bloodborne Hunter's Lamp: Crooked Rustic Pole Arching Over a Suspended Lantern
     g_lamp.active = true;
     g_lamp.obj_id = OBJ_LAMP_BASE;
 
-    // Stepped octagonal stone/iron base
-    g_lamp.base_p1 = (Vec3){0.0f, -4.20f, 0.0f};
-    g_lamp.base_p2 = (Vec3){0.0f, -3.90f, 0.0f};
+    float lx = 0.12f;
+    float lz = 0.00f;
+    g_lamp.lantern_pos = (Vec3){lx, 1.82f, lz};
+    g_lamp.flame_pos   = (Vec3){lx, 1.82f, lz};
 
-    // Plinth
-    g_lamp.plinth_p1 = (Vec3){0.0f, -3.90f, 0.0f};
-    g_lamp.plinth_p2 = (Vec3){0.0f, -3.50f, 0.0f};
-
-    // Lower collar ring
-    g_lamp.collar1_p1 = (Vec3){0.0f, -3.50f, 0.0f};
-    g_lamp.collar1_p2 = (Vec3){0.0f, -3.20f, 0.0f};
-
-    // Fluted central iron shaft
-    g_lamp.shaft_p1 = (Vec3){0.0f, -3.20f, 0.0f};
-    g_lamp.shaft_p2 = (Vec3){0.0f,  0.40f, 0.0f};
-
-    // Mid baluster knop
-    g_lamp.collar2_p1 = (Vec3){0.0f,  0.40f, 0.0f};
-    g_lamp.collar2_p2 = (Vec3){0.0f,  0.80f, 0.0f};
-
-    // Upper capital & bracket mount
-    g_lamp.capital_p1 = (Vec3){0.0f,  0.80f, 0.0f};
-    g_lamp.capital_p2 = (Vec3){0.0f,  1.55f, 0.0f};
-
-    // Lantern bottom tray / floor
-    g_lamp.floor_p1 = (Vec3){0.0f,  1.55f, 0.0f};
-    g_lamp.floor_p2 = (Vec3){0.0f,  1.75f, 0.0f};
-
-    // Wax candle inside cage
-    g_lamp.candle_p1 = (Vec3){0.0f,  1.75f, 0.0f};
-    g_lamp.candle_p2 = (Vec3){0.0f,  2.15f, 0.0f};
-
-    // Candle flame position
-    g_lamp.flame_pos = (Vec3){0.0f,  2.22f, 0.0f};
-
-    // 6 Vertical wrought-iron cage ribs
-    float r_cage = 1.15f;
-    for (int k = 0; k < NUM_LAMP_RIBS; k++) {
-        float angle = (float)k * (2.0f * (float)M_PI / (float)NUM_LAMP_RIBS) + ((float)M_PI / 6.0f);
-        float cx = r_cage * cosf(angle);
-        float cz = r_cage * sinf(angle);
-        g_lamp.ribs[k].p1 = (Vec3){cx, 1.75f, cz};
-        g_lamp.ribs[k].p2 = (Vec3){cx, 3.20f, cz};
-        g_lamp.ribs[k].radius = 0.09f;
+    // Crooked shepherd's-crook wooden/iron post rising on the right (-X) and arching sharply left (+X)
+    static const Vec3 pole_pts[NUM_LAMP_POLE_SEGS + 1] = {
+        {-1.42f, -4.25f,  0.18f},
+        {-1.38f, -2.55f,  0.14f},
+        {-1.40f, -0.85f,  0.11f},
+        {-1.48f,  0.75f,  0.08f},
+        {-1.38f,  2.05f,  0.06f},
+        {-1.12f,  3.12f,  0.04f},
+        {-0.66f,  3.92f,  0.02f},
+        {-0.16f,  4.46f,  0.00f},
+        { 0.16f,  4.40f,  0.00f},
+        { 0.36f,  4.16f,  0.00f}
+    };
+    static const float pole_rads[NUM_LAMP_POLE_SEGS] = {
+        0.18f, 0.17f, 0.16f, 0.16f, 0.15f, 0.14f, 0.13f, 0.12f, 0.09f
+    };
+    for (int i = 0; i < NUM_LAMP_POLE_SEGS; i++) {
+        g_lamp.pole_segs[i].p1 = pole_pts[i];
+        g_lamp.pole_segs[i].p2 = pole_pts[i + 1];
+        g_lamp.pole_segs[i].radius = pole_rads[i];
     }
 
-    // Gothic canopy / hood
-    g_lamp.roof_p1 = (Vec3){0.0f,  3.20f, 0.0f};
-    g_lamp.roof_p2 = (Vec3){0.0f,  3.85f, 0.0f};
+    // Iron/leather binding straps wrapped around the curved upper crook
+    g_lamp.straps[0] = (LampSegment){{-1.41f, 1.88f, 0.06f}, {-1.34f, 2.22f, 0.06f}, 0.22f};
+    g_lamp.straps[1] = (LampSegment){{-1.17f, 2.98f, 0.04f}, {-1.04f, 3.28f, 0.04f}, 0.21f};
+    g_lamp.straps[2] = (LampSegment){{-0.73f, 3.80f, 0.02f}, {-0.56f, 4.04f, 0.02f}, 0.19f};
 
-    // Top spire finial
-    g_lamp.finial_p1 = (Vec3){0.0f,  3.85f, 0.0f};
-    g_lamp.finial_p2 = (Vec3){0.0f,  4.25f, 0.0f};
+    // Small antique tarnished brass bell hanging near the upper crook arch
+    g_lamp.bell_pos = (Vec3){-0.12f, 3.92f, 0.00f};
 
-    // 2. The Messengers (Alabaster creatures reaching upwards from the cobblestone base)
-    // Messenger 0: Front-Left
-    g_messengers[0].obj_id = OBJ_MSGR_BASE + 0;
-    g_messengers[0].head_pos = (Vec3){-1.05f, -3.00f, -1.05f};
-    g_messengers[0].head_radius = 0.44f;
-    g_messengers[0].yaw = 0.70f;
-    g_messengers[0].torso_p1 = (Vec3){-1.05f, -3.20f, -1.05f};
-    g_messengers[0].torso_p2 = (Vec3){-1.15f, -3.90f, -1.15f};
-    g_messengers[0].arm_l_p1 = (Vec3){-0.95f, -3.25f, -1.00f};
-    g_messengers[0].arm_l_p2 = (Vec3){-0.55f, -2.40f, -0.60f};
-    g_messengers[0].arm_r_p1 = (Vec3){-1.10f, -3.25f, -0.90f};
-    g_messengers[0].arm_r_p2 = (Vec3){-0.75f, -2.50f, -0.35f};
+    // Top suspension hook/chain from crook tip down to lantern crown
+    g_lamp.top_hook = (LampSegment){{lx, 4.40f, lz}, {lx, 3.12f, lz}, 0.06f};
 
-    // Messenger 1: Front-Right
-    g_messengers[1].obj_id = OBJ_MSGR_BASE + 1;
-    g_messengers[1].head_pos = (Vec3){ 1.05f, -3.02f, -1.00f};
-    g_messengers[1].head_radius = 0.44f;
-    g_messengers[1].yaw = -0.75f;
-    g_messengers[1].torso_p1 = (Vec3){ 1.05f, -3.20f, -1.00f};
-    g_messengers[1].torso_p2 = (Vec3){ 1.15f, -3.90f, -1.10f};
-    g_messengers[1].arm_l_p1 = (Vec3){ 0.95f, -3.25f, -0.90f};
-    g_messengers[1].arm_l_p2 = (Vec3){ 0.65f, -2.40f, -0.50f};
-    g_messengers[1].arm_r_p1 = (Vec3){ 1.10f, -3.25f, -1.05f};
-    g_messengers[1].arm_r_p2 = (Vec3){ 0.55f, -2.30f, -0.65f};
+    // Thin vertical chain dangling straight down below the suspended lantern into the dark air
+    g_lamp.bottom_chain = (LampSegment){{lx, 0.45f, lz}, {lx, -1.75f, lz}, 0.048f};
 
-    // Messenger 2: Left-Rear
-    g_messengers[2].obj_id = OBJ_MSGR_BASE + 2;
-    g_messengers[2].head_pos = (Vec3){-1.25f, -3.05f,  0.80f};
-    g_messengers[2].head_radius = 0.42f;
-    g_messengers[2].yaw = 2.40f;
-    g_messengers[2].torso_p1 = (Vec3){-1.25f, -3.25f,  0.80f};
-    g_messengers[2].torso_p2 = (Vec3){-1.35f, -3.90f,  0.85f};
-    g_messengers[2].arm_l_p1 = (Vec3){-1.15f, -3.30f,  0.70f};
-    g_messengers[2].arm_l_p2 = (Vec3){-0.55f, -2.45f,  0.40f};
-    g_messengers[2].arm_r_p1 = (Vec3){-1.30f, -3.30f,  0.85f};
-    g_messengers[2].arm_r_p2 = (Vec3){-0.75f, -2.55f,  0.20f};
+    // Draped catenary slack chain linking pole to lantern side
+    static const Vec3 chain_pts[NUM_LAMP_CHAINS + 1] = {
+        {-1.36f, 2.15f, 0.06f},
+        {-1.22f, 1.50f, 0.05f},
+        {-0.96f, 1.08f, 0.04f},
+        {-0.72f, 1.12f, 0.03f},
+        {-0.56f, 1.32f, 0.02f},
+        {-0.48f, 1.55f, 0.01f}
+    };
+    for (int i = 0; i < NUM_LAMP_CHAINS; i++) {
+        g_lamp.slack_chains[i].p1 = chain_pts[i];
+        g_lamp.slack_chains[i].p2 = chain_pts[i + 1];
+        g_lamp.slack_chains[i].radius = 0.048f;
+    }
 
-    // Messenger 3: Right-Rear
-    g_messengers[3].obj_id = OBJ_MSGR_BASE + 3;
-    g_messengers[3].head_pos = (Vec3){ 1.20f, -3.05f,  0.75f};
-    g_messengers[3].head_radius = 0.42f;
-    g_messengers[3].yaw = -2.30f;
-    g_messengers[3].torso_p1 = (Vec3){ 1.20f, -3.25f,  0.75f};
-    g_messengers[3].torso_p2 = (Vec3){ 1.30f, -3.90f,  0.80f};
-    g_messengers[3].arm_l_p1 = (Vec3){ 1.10f, -3.30f,  0.65f};
-    g_messengers[3].arm_l_p2 = (Vec3){ 0.55f, -2.45f,  0.35f};
-    g_messengers[3].arm_r_p1 = (Vec3){ 1.25f, -3.30f,  0.80f};
-    g_messengers[3].arm_r_p2 = (Vec3){ 0.70f, -2.55f,  0.15f};
+    // 4 slender vertical wrought-iron corner ribs around the suspended glass lantern chamber
+    float r_cage = 0.72f;
+    for (int k = 0; k < NUM_LAMP_RIBS; k++) {
+        float angle = (float)k * ((float)M_PI * 0.5f) + ((float)M_PI * 0.25f);
+        float rx = lx + r_cage * cosf(angle);
+        float rz = lz + r_cage * sinf(angle);
+        g_lamp.ribs[k].p1 = (Vec3){rx, 1.20f, rz};
+        g_lamp.ribs[k].p2 = (Vec3){rx, 2.36f, rz};
+        g_lamp.ribs[k].radius = 0.065f;
+    }
+
+    // 2. The 4 Tall Skeletal Messengers emerging from the misty ground in an intimate circle under the lamp
+    // Spread slightly wider with gaunt slender torsos, long spindly necks & clearly articulated V-bent arms
+    // Messenger 0: Screen-Left (+X), looking inward & upward with skeletal arms raised in offering
+    g_messengers[0].obj_id     = OBJ_MSGR_BASE + 0;
+    g_messengers[0].head_pos   = (Vec3){ 1.56f, -1.42f, -0.15f};
+    g_messengers[0].head_radius = 0.45f;
+    g_messengers[0].jaw_pos    = (Vec3){ 1.38f, -1.78f, -0.15f};
+    g_messengers[0].jaw_radius = 0.24f;
+    g_messengers[0].neck_p1    = (Vec3){ 1.58f, -1.80f, -0.15f};
+    g_messengers[0].neck_p2    = (Vec3){ 1.72f, -2.52f, -0.18f};
+    g_messengers[0].shoulder_l = (Vec3){ 1.74f, -2.56f, -0.58f};
+    g_messengers[0].shoulder_r = (Vec3){ 1.66f, -2.56f,  0.22f};
+    g_messengers[0].torso_p1   = (Vec3){ 1.70f, -2.60f, -0.18f};
+    g_messengers[0].torso_p2   = (Vec3){ 1.82f, -4.22f, -0.22f};
+    g_messengers[0].elbow_l    = (Vec3){ 1.15f, -3.28f, -0.48f};
+    g_messengers[0].hand_l     = (Vec3){ 0.80f, -2.18f, -0.26f};
+    g_messengers[0].elbow_r    = (Vec3){ 1.12f, -3.25f,  0.18f};
+    g_messengers[0].hand_r     = (Vec3){ 0.78f, -2.14f,  0.04f};
+    g_messengers[0].yaw        = -1.85f;
+
+    // Messenger 1: Front-Center foreground (-Z), hunched skeletal back & ribcage visible, reaching up
+    g_messengers[1].obj_id     = OBJ_MSGR_BASE + 1;
+    g_messengers[1].head_pos   = (Vec3){ 0.14f, -1.62f, -1.42f};
+    g_messengers[1].head_radius = 0.45f;
+    g_messengers[1].jaw_pos    = (Vec3){ 0.14f, -1.96f, -1.24f};
+    g_messengers[1].jaw_radius = 0.24f;
+    g_messengers[1].neck_p1    = (Vec3){ 0.14f, -1.98f, -1.44f};
+    g_messengers[1].neck_p2    = (Vec3){ 0.14f, -2.66f, -1.58f};
+    g_messengers[1].shoulder_l = (Vec3){ 0.58f, -2.70f, -1.55f};
+    g_messengers[1].shoulder_r = (Vec3){-0.30f, -2.70f, -1.58f};
+    g_messengers[1].torso_p1   = (Vec3){ 0.14f, -2.74f, -1.58f};
+    g_messengers[1].torso_p2   = (Vec3){ 0.14f, -4.22f, -1.68f};
+    g_messengers[1].elbow_l    = (Vec3){ 0.72f, -3.48f, -1.08f};
+    g_messengers[1].hand_l     = (Vec3){ 0.46f, -2.42f, -0.68f};
+    g_messengers[1].elbow_r    = (Vec3){-0.44f, -3.48f, -1.10f};
+    g_messengers[1].hand_r     = (Vec3){-0.18f, -2.44f, -0.70f};
+    g_messengers[1].yaw        = 0.0f;
+
+    // Messenger 2: Screen-Right (-X), gaunt head tilted up toward lantern, bent arms raised
+    g_messengers[2].obj_id     = OBJ_MSGR_BASE + 2;
+    g_messengers[2].head_pos   = (Vec3){-1.15f, -1.52f, -0.25f};
+    g_messengers[2].head_radius = 0.44f;
+    g_messengers[2].jaw_pos    = (Vec3){-0.96f, -1.86f, -0.25f};
+    g_messengers[2].jaw_radius = 0.23f;
+    g_messengers[2].neck_p1    = (Vec3){-1.17f, -1.88f, -0.25f};
+    g_messengers[2].neck_p2    = (Vec3){-1.32f, -2.58f, -0.30f};
+    g_messengers[2].shoulder_l = (Vec3){-1.28f, -2.62f,  0.10f};
+    g_messengers[2].shoulder_r = (Vec3){-1.34f, -2.62f, -0.70f};
+    g_messengers[2].torso_p1   = (Vec3){-1.32f, -2.66f, -0.30f};
+    g_messengers[2].torso_p2   = (Vec3){-1.42f, -4.22f, -0.35f};
+    g_messengers[2].elbow_l    = (Vec3){-0.84f, -3.32f,  0.10f};
+    g_messengers[2].hand_l     = (Vec3){-0.48f, -2.28f, -0.02f};
+    g_messengers[2].elbow_r    = (Vec3){-0.86f, -3.34f, -0.56f};
+    g_messengers[2].hand_r     = (Vec3){-0.50f, -2.30f, -0.34f};
+    g_messengers[2].yaw        = 1.85f;
+
+    // Messenger 3: Rear-Center (+Z), eerie ghostly pale face staring forward toward camera & upward
+    g_messengers[3].obj_id     = OBJ_MSGR_BASE + 3;
+    g_messengers[3].head_pos   = (Vec3){ 0.14f, -1.16f,  1.22f};
+    g_messengers[3].head_radius = 0.47f;
+    g_messengers[3].jaw_pos    = (Vec3){ 0.14f, -1.54f,  1.06f};
+    g_messengers[3].jaw_radius = 0.25f;
+    g_messengers[3].neck_p1    = (Vec3){ 0.14f, -1.58f,  1.24f};
+    g_messengers[3].neck_p2    = (Vec3){ 0.14f, -2.30f,  1.32f};
+    g_messengers[3].shoulder_l = (Vec3){-0.30f, -2.34f,  1.30f};
+    g_messengers[3].shoulder_r = (Vec3){ 0.58f, -2.34f,  1.30f};
+    g_messengers[3].torso_p1   = (Vec3){ 0.14f, -2.38f,  1.32f};
+    g_messengers[3].torso_p2   = (Vec3){ 0.14f, -4.22f,  1.42f};
+    g_messengers[3].elbow_l    = (Vec3){-0.44f, -3.08f,  0.86f};
+    g_messengers[3].hand_l     = (Vec3){-0.18f, -2.12f,  0.58f};
+    g_messengers[3].elbow_r    = (Vec3){ 0.72f, -3.08f,  0.86f};
+    g_messengers[3].hand_r     = (Vec3){ 0.44f, -2.12f,  0.58f};
+    g_messengers[3].yaw        = 3.14159f;
 }
 
 static void init_scene(void) {
@@ -1934,17 +1993,19 @@ static bool intersect_sword(const Sword3D *sw, Vec3 ro, Vec3 rd, float *out_t, V
     return false;
 }
 
-static bool intersect_vertical_cylinder(float y_min, float y_max, float radius,
+static bool intersect_vertical_cylinder(float cx, float cz, float y_min, float y_max, float radius,
                                        Vec3 ro, Vec3 rd,
                                        float *out_t, Vec3 *out_pt, Vec3 *out_norm) {
+    float ox = ro.x - cx;
+    float oz = ro.z - cz;
     float a = rd.x * rd.x + rd.z * rd.z;
     float best_t = 1e9f;
     Vec3 best_pt = {0}, best_norm = {0, 1, 0};
     bool hit = false;
 
     if (a > 1e-6f) {
-        float b = 2.0f * (ro.x * rd.x + ro.z * rd.z);
-        float c = ro.x * ro.x + ro.z * ro.z - radius * radius;
+        float b = 2.0f * (ox * rd.x + oz * rd.z);
+        float c = ox * ox + oz * oz - radius * radius;
         float disc = b * b - 4.0f * a * c;
         if (disc >= 0.0f) {
             float sdisc = sqrtf(disc);
@@ -1955,7 +2016,7 @@ static bool intersect_vertical_cylinder(float y_min, float y_max, float radius,
                 if (y >= y_min && y <= y_max) {
                     best_t = t0;
                     best_pt = (Vec3){ro.x + rd.x * t0, y, ro.z + rd.z * t0};
-                    best_norm = vec3_norm((Vec3){best_pt.x, 0.0f, best_pt.z});
+                    best_norm = vec3_norm((Vec3){best_pt.x - cx, 0.0f, best_pt.z - cz});
                     hit = true;
                 }
             }
@@ -1964,32 +2025,33 @@ static bool intersect_vertical_cylinder(float y_min, float y_max, float radius,
                 if (y >= y_min && y <= y_max) {
                     best_t = t1;
                     best_pt = (Vec3){ro.x + rd.x * t1, y, ro.z + rd.z * t1};
-                    best_norm = vec3_norm((Vec3){best_pt.x, 0.0f, best_pt.z});
+                    best_norm = vec3_norm((Vec3){best_pt.x - cx, 0.0f, best_pt.z - cz});
                     hit = true;
                 }
             }
         }
     }
 
-    // Flat cap at y_max
+    // Flat caps at y_max and y_min
     if (fabsf(rd.y) > 1e-5f) {
         float t_top = (y_max - ro.y) / rd.y;
         if (t_top > 0.1f && t_top < best_t) {
             float x = ro.x + rd.x * t_top;
             float z = ro.z + rd.z * t_top;
-            if (x * x + z * z <= radius * radius) {
+            float dx = x - cx, dz = z - cz;
+            if (dx * dx + dz * dz <= radius * radius) {
                 best_t = t_top;
                 best_pt = (Vec3){x, y_max, z};
                 best_norm = (Vec3){0.0f, 1.0f, 0.0f};
                 hit = true;
             }
         }
-        // Flat cap at y_min
         float t_bot = (y_min - ro.y) / rd.y;
         if (t_bot > 0.1f && t_bot < best_t) {
             float x = ro.x + rd.x * t_bot;
             float z = ro.z + rd.z * t_bot;
-            if (x * x + z * z <= radius * radius) {
+            float dx = x - cx, dz = z - cz;
+            if (dx * dx + dz * dz <= radius * radius) {
                 best_t = t_bot;
                 best_pt = (Vec3){x, y_min, z};
                 best_norm = (Vec3){0.0f, -1.0f, 0.0f};
@@ -2007,9 +2069,11 @@ static bool intersect_vertical_cylinder(float y_min, float y_max, float radius,
     return false;
 }
 
-static bool intersect_vertical_cone(float y_min, float y_max, float r_bottom, float r_top,
+static bool intersect_vertical_cone(float cx, float cz, float y_min, float y_max, float r_bottom, float r_top,
                                     Vec3 ro, Vec3 rd,
                                     float *out_t, Vec3 *out_pt, Vec3 *out_norm) {
+    float ox = ro.x - cx;
+    float oz = ro.z - cz;
     float h = y_max - y_min;
     float dr = (r_top - r_bottom) / h;
     float y0 = ro.y - y_min;
@@ -2017,8 +2081,8 @@ static bool intersect_vertical_cone(float y_min, float y_max, float r_bottom, fl
     float c_rd = dr * rd.y;
 
     float a = (rd.x * rd.x + rd.z * rd.z) - c_rd * c_rd;
-    float b = 2.0f * ((ro.x * rd.x + ro.z * rd.z) - c_r0 * c_rd);
-    float c = (ro.x * ro.x + ro.z * ro.z) - c_r0 * c_r0;
+    float b = 2.0f * ((ox * rd.x + oz * rd.z) - c_r0 * c_rd);
+    float c = (ox * ox + oz * oz) - c_r0 * c_r0;
 
     float best_t = 1e9f;
     Vec3 best_pt = {0}, best_norm = {0, 1, 0};
@@ -2036,8 +2100,8 @@ static bool intersect_vertical_cone(float y_min, float y_max, float r_bottom, fl
                 if (y >= y_min && y <= y_max) {
                     best_t = t0;
                     best_pt = (Vec3){ro.x + rd.x * t0, y, ro.z + rd.z * t0};
-                    float ny = -dr;
-                    best_norm = vec3_norm((Vec3){best_pt.x, ny, best_pt.z});
+                    float r_y = r_bottom + dr * (y - y_min);
+                    best_norm = vec3_norm((Vec3){best_pt.x - cx, -dr * r_y, best_pt.z - cz});
                     hit = true;
                 }
             }
@@ -2046,25 +2110,42 @@ static bool intersect_vertical_cone(float y_min, float y_max, float r_bottom, fl
                 if (y >= y_min && y <= y_max) {
                     best_t = t1;
                     best_pt = (Vec3){ro.x + rd.x * t1, y, ro.z + rd.z * t1};
-                    float ny = -dr;
-                    best_norm = vec3_norm((Vec3){best_pt.x, ny, best_pt.z});
+                    float r_y = r_bottom + dr * (y - y_min);
+                    best_norm = vec3_norm((Vec3){best_pt.x - cx, -dr * r_y, best_pt.z - cz});
                     hit = true;
                 }
             }
         }
     }
 
-    // Flat cap at y_min (bottom)
+    // Flat caps at y_min and y_max
     if (fabsf(rd.y) > 1e-5f) {
-        float t_bot = (y_min - ro.y) / rd.y;
-        if (t_bot > 0.1f && t_bot < best_t) {
-            float x = ro.x + rd.x * t_bot;
-            float z = ro.z + rd.z * t_bot;
-            if (x * x + z * z <= r_bottom * r_bottom) {
-                best_t = t_bot;
-                best_pt = (Vec3){x, y_min, z};
-                best_norm = (Vec3){0.0f, -1.0f, 0.0f};
-                hit = true;
+        if (r_bottom > 0.02f) {
+            float t_bot = (y_min - ro.y) / rd.y;
+            if (t_bot > 0.1f && t_bot < best_t) {
+                float x = ro.x + rd.x * t_bot;
+                float z = ro.z + rd.z * t_bot;
+                float dx = x - cx, dz = z - cz;
+                if (dx * dx + dz * dz <= r_bottom * r_bottom) {
+                    best_t = t_bot;
+                    best_pt = (Vec3){x, y_min, z};
+                    best_norm = (Vec3){0.0f, -1.0f, 0.0f};
+                    hit = true;
+                }
+            }
+        }
+        if (r_top > 0.02f) {
+            float t_top = (y_max - ro.y) / rd.y;
+            if (t_top > 0.1f && t_top < best_t) {
+                float x = ro.x + rd.x * t_top;
+                float z = ro.z + rd.z * t_top;
+                float dx = x - cx, dz = z - cz;
+                if (dx * dx + dz * dz <= r_top * r_top) {
+                    best_t = t_top;
+                    best_pt = (Vec3){x, y_max, z};
+                    best_norm = (Vec3){0.0f, 1.0f, 0.0f};
+                    hit = true;
+                }
             }
         }
     }
@@ -2082,92 +2163,121 @@ static bool intersect_lamp(const Lamp3D *lp, Vec3 ro, Vec3 rd,
                            float *out_t, Vec3 *out_pt, Vec3 *out_norm, int *out_part) {
     if (!lp->active) return false;
 
-    // Fast bounding capsule test
+    // Fast broad bounding capsule encompassing crooked pole + suspended lantern
     Vec3 b_pt, b_norm;
     float b_t;
-    if (!intersect_capsule(lp->base_p1, lp->finial_p2, 2.30f, ro, rd, &b_t, &b_pt, &b_norm)) {
+    if (!intersect_capsule((Vec3){-0.50f, -4.35f, 0.0f}, (Vec3){-0.50f, 4.65f, 0.0f}, 2.40f, ro, rd, &b_t, &b_pt, &b_norm)) {
         return false;
     }
 
     float best_t = 1e9f;
     Vec3 best_pt = {0}, best_norm = {0, 1, 0};
-    int best_part = 0; // 0: iron, 1: candle wax, 2: roof, 3: finial
+    int best_part = 0; // 0: pole/iron/chains, 1: wax stub, 2: ornate dome/cup, 3: finial, 4: brass bell, 5: ghostly core
     bool hit = false;
 
-    // 1. Base pedestal tier 1 (y: -4.20 to -3.85, radius: 1.85f)
-    {
+    float lx = lp->lantern_pos.x;
+    float lz = lp->lantern_pos.z;
+
+    // 1. Crooked rustic pole arching over to hang the lantern
+    for (int i = 0; i < NUM_LAMP_POLE_SEGS; i++) {
         float t; Vec3 pt, norm;
-        if (intersect_vertical_cylinder(-4.20f, -3.85f, 1.85f, ro, rd, &t, &pt, &norm)) {
+        if (intersect_capsule(lp->pole_segs[i].p1, lp->pole_segs[i].p2, lp->pole_segs[i].radius, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
         }
     }
-    // 2. Base plinth tier 2 (y: -3.85 to -3.50, radius: 1.28f)
+
+    // 2. Iron/leather binding straps wrapped around upper crook
+    for (int i = 0; i < 3; i++) {
+        float t; Vec3 pt, norm;
+        if (intersect_capsule(lp->straps[i].p1, lp->straps[i].p2, lp->straps[i].radius, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+    }
+
+    // 3. Hanging antique brass bell near crook bend
     {
         float t; Vec3 pt, norm;
-        if (intersect_vertical_cylinder(-3.85f, -3.50f, 1.28f, ro, rd, &t, &pt, &norm)) {
+        if (intersect_vertical_cone(lp->bell_pos.x, lp->bell_pos.z, lp->bell_pos.y - 0.16f, lp->bell_pos.y + 0.22f,
+                                    0.25f, 0.08f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 4; hit = true; }
+        }
+    }
+
+    // 4. Top suspension chain/rod & bottom dangling vertical chain & side slack chain
+    {
+        float t; Vec3 pt, norm;
+        if (intersect_capsule(lp->top_hook.p1, lp->top_hook.p2, lp->top_hook.radius, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+        }
+        if (intersect_capsule(lp->bottom_chain.p1, lp->bottom_chain.p2, lp->bottom_chain.radius, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+        }
+        for (int i = 0; i < NUM_LAMP_CHAINS; i++) {
+            if (intersect_capsule(lp->slack_chains[i].p1, lp->slack_chains[i].p2, lp->slack_chains[i].radius, ro, rd, &t, &pt, &norm)) {
+                if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+            }
+        }
+    }
+
+    // 5. Suspended Lantern Crown & Ornate Gothic Domed Cap
+    {
+        float t; Vec3 pt, norm;
+        // Top finial ring
+        if (intersect_vertical_cylinder(lx, lz, 3.00f, 3.18f, 0.16f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 3; hit = true; }
+        }
+        // Upper gothic dome spire
+        if (intersect_vertical_cone(lx, lz, 2.68f, 3.02f, 0.56f, 0.16f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        // Lower flared bell eaves
+        if (intersect_vertical_cone(lx, lz, 2.40f, 2.70f, 0.94f, 0.54f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        // Scalloped upper rim collar
+        if (intersect_vertical_cylinder(lx, lz, 2.32f, 2.42f, 0.96f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
         }
     }
-    // 3. Lower collar (y: -3.50 to -3.20, radius: 0.58f)
-    {
-        float t; Vec3 pt, norm;
-        if (intersect_vertical_cylinder(-3.50f, -3.20f, 0.58f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
-        }
-    }
-    // 4. Main shaft (y: -3.20 to 0.40, radius: 0.38f)
-    {
-        float t; Vec3 pt, norm;
-        if (intersect_vertical_cylinder(-3.20f, 0.40f, 0.38f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
-        }
-    }
-    // 5. Mid baluster knop (y: 0.40 to 0.80, radius: 0.52f)
-    {
-        float t; Vec3 pt, norm;
-        if (intersect_capsule(lp->collar2_p1, lp->collar2_p2, 0.52f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
-        }
-    }
-    // 6. Upper capital / neck (y: 0.80 to 1.55, radius: 0.42f)
-    {
-        float t; Vec3 pt, norm;
-        if (intersect_vertical_cylinder(0.80f, 1.55f, 0.42f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
-        }
-    }
-    // 7. Lantern floor tray / bottom plate (y: 1.55 to 1.75, radius: 1.15f)
-    {
-        float t; Vec3 pt, norm;
-        if (intersect_vertical_cylinder(1.55f, 1.75f, 1.15f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
-        }
-    }
-    // 8. Wax candle inside cage (y: 1.75 to 2.15, radius: 0.18f)
-    {
-        float t; Vec3 pt, norm;
-        if (intersect_vertical_cylinder(1.75f, 2.15f, 0.18f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 1; hit = true; }
-        }
-    }
-    // 9. Lantern cage vertical ribs (6 wrought iron bars around perimeter)
+
+    // 6. Open Glass Chamber: 4 slender corner wrought-iron ribs
     for (int k = 0; k < NUM_LAMP_RIBS; k++) {
         float t; Vec3 pt, norm;
         if (intersect_capsule(lp->ribs[k].p1, lp->ribs[k].p2, lp->ribs[k].radius, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
         }
     }
-    // 10. Gothic canopy / hood (tapered hood from y: 3.20 to 3.85, radius: 1.18 to 0.28)
+
+    // 7. Interior Candle Stub & Blinding Ghostly Ethereal Core (when lit!)
     {
         float t; Vec3 pt, norm;
-        if (intersect_vertical_cone(3.20f, 3.85f, 1.18f, 0.28f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        if (intersect_vertical_cylinder(lx, lz, 1.24f, 1.46f, 0.14f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 1; hit = true; }
+        }
+        if (g_bonfire_lit) {
+            float sway = sinf(g_anim_time * 9.0f) * 0.03f;
+            float core_r = (g_fire_state == FIRE_STATE_SMOLDERING_REST) ? 0.16f : 0.25f;
+            Vec3 c_p1 = (Vec3){lx, 1.56f, lz};
+            Vec3 c_p2 = (Vec3){lx + sway, 2.02f, lz};
+            if (intersect_capsule(c_p1, c_p2, core_r, ro, rd, &t, &pt, &norm)) {
+                if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 5; hit = true; }
+            }
         }
     }
-    // 11. Top finial spire (tapered spire from y: 3.85 to 4.35, radius: 0.26 to 0.04)
+
+    // 8. Ornate Tapered Bottom Cup Bowl & Pointed Drop Finial
     {
         float t; Vec3 pt, norm;
-        if (intersect_vertical_cone(3.85f, 4.35f, 0.26f, 0.04f, ro, rd, &t, &pt, &norm)) {
+        // Lower collar rim
+        if (intersect_vertical_cylinder(lx, lz, 1.14f, 1.25f, 0.86f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+        }
+        // Tapered iron cup bowl underneath
+        if (intersect_vertical_cone(lx, lz, 0.72f, 1.15f, 0.30f, 0.80f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        // Pointed bottom finial drop
+        if (intersect_vertical_cone(lx, lz, 0.44f, 0.73f, 0.06f, 0.24f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 3; hit = true; }
         }
     }
@@ -2186,24 +2296,21 @@ static bool intersect_messengers(const Messenger3D *msgrs, int count, Vec3 ro, V
                                  float *out_t, Vec3 *out_pt, Vec3 *out_norm, float *out_feature, int *out_id) {
     float best_t = 1e9f;
     Vec3 best_pt = {0}, best_norm = {0, 1, 0};
-    float best_feat = 0.0f; // 0.0 = skin, 1.0 = deep eye socket void, 0.35 = arm
+    float best_feat = 0.0f; // 0.0: skull/bone, 0.25: limb/neck, 0.60: ribcage groove, 1.0: deep eye/mouth void
     int best_id = 0;
     bool hit = false;
 
     for (int i = 0; i < count; i++) {
         const Messenger3D *m = &msgrs[i];
-
-        // 1. Head sphere
         float t; Vec3 pt, norm;
-        if (intersect_capsule(m->head_pos, m->head_pos, m->head_radius, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) {
-                best_t = t;
-                best_pt = pt;
-                best_norm = norm;
-                best_id = m->obj_id;
 
-                // Test eye sockets: two hollow sunken voids facing outward
-                Vec3 fwd_face = (Vec3){ sinf(m->yaw), 0.08f, cosf(m->yaw) };
+        // 1. Bulbous elongated pale cranium (slightly ovoid tall skull silhouette)
+        Vec3 skull_top = (Vec3){m->head_pos.x, m->head_pos.y + 0.14f, m->head_pos.z};
+        if (intersect_capsule(m->head_pos, skull_top, m->head_radius * 0.88f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm; best_id = m->obj_id;
+
+                Vec3 fwd_face = vec3_norm((Vec3){ sinf(m->yaw), 0.14f, cosf(m->yaw) });
                 Vec3 rgt_face = (Vec3){ cosf(m->yaw), 0.0f, -sinf(m->yaw) };
                 Vec3 rel = vec3_sub(pt, m->head_pos);
                 float face_dot = vec3_dot(rel, fwd_face);
@@ -2211,13 +2318,19 @@ static bool intersect_messengers(const Messenger3D *msgrs, int count, Vec3 ro, V
                 float up_dot = rel.y;
 
                 float feat = 0.0f;
-                if (face_dot > 0.18f && up_dot >= 0.02f && up_dot <= 0.20f) {
-                    if (fabsf(rgt_dot - 0.14f) < 0.08f || fabsf(rgt_dot + 0.14f) < 0.08f) {
-                        feat = 1.0f; // Deep eye cavity void
+                // Two huge hollow sunken dark eye sockets
+                if (face_dot > 0.20f && up_dot >= -0.02f && up_dot <= 0.19f) {
+                    if (fabsf(rgt_dot - 0.16f) < 0.095f || fabsf(rgt_dot + 0.16f) < 0.095f) {
+                        feat = 1.0f;
                     }
                 }
-                if (face_dot > 0.20f && up_dot >= -0.24f && up_dot <= -0.06f && fabsf(rgt_dot) < 0.10f) {
-                    feat = 0.95f; // Hollow mouth void
+                // Nasal cavity slit
+                if (face_dot > 0.28f && up_dot >= -0.14f && up_dot <= -0.02f && fabsf(rgt_dot) < 0.045f) {
+                    feat = 0.95f;
+                }
+                // Hollow grimacing mouth void
+                if (face_dot > 0.20f && up_dot >= -0.32f && up_dot <= -0.16f && fabsf(rgt_dot) < 0.12f) {
+                    feat = 1.0f;
                 }
 
                 best_feat = feat;
@@ -2225,40 +2338,68 @@ static bool intersect_messengers(const Messenger3D *msgrs, int count, Vec3 ro, V
             }
         }
 
-        // 2. Torso capsule
-        if (intersect_capsule(m->torso_p1, m->torso_p2, 0.28f, ro, rd, &t, &pt, &norm)) {
+        // 2. Narrower gaunt jaw / chin
+        if (intersect_capsule(m->jaw_pos, m->jaw_pos, m->jaw_radius, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) {
-                best_t = t;
-                best_pt = pt;
-                best_norm = norm;
-                best_feat = 0.15f;
-                best_id = m->obj_id;
+                best_t = t; best_pt = pt; best_norm = norm; best_id = m->obj_id;
+                Vec3 fwd_face = vec3_norm((Vec3){ sinf(m->yaw), 0.14f, cosf(m->yaw) });
+                Vec3 rgt_face = (Vec3){ cosf(m->yaw), 0.0f, -sinf(m->yaw) };
+                Vec3 rel = vec3_sub(pt, m->jaw_pos);
+                float feat = 0.10f;
+                if (vec3_dot(rel, fwd_face) > 0.10f && rel.y > -0.04f && fabsf(vec3_dot(rel, rgt_face)) < 0.11f) {
+                    feat = 1.0f; // Open screaming/grimacing mouth cavity
+                }
+                best_feat = feat;
                 hit = true;
             }
         }
 
-        // 3. Left arm capsule
-        if (intersect_capsule(m->arm_l_p1, m->arm_l_p2, 0.13f, ro, rd, &t, &pt, &norm)) {
+        // 3. Iconic long thin spindly neck
+        if (intersect_capsule(m->neck_p1, m->neck_p2, 0.115f, ro, rd, &t, &pt, &norm)) {
             if (t < best_t) {
-                best_t = t;
-                best_pt = pt;
-                best_norm = norm;
-                best_feat = 0.35f;
-                best_id = m->obj_id;
+                best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.22f; best_id = m->obj_id; hit = true;
+            }
+        }
+
+        // 4. Broad bony clavicle / hunched shoulders bar
+        if (intersect_capsule(m->shoulder_l, m->shoulder_r, 0.185f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.08f; best_id = m->obj_id; hit = true;
+            }
+        }
+
+        // 5. Gaunt skeletal ribcage torso tapering into ground mist
+        if (intersect_capsule(m->torso_p1, m->torso_p2, 0.25f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm; best_id = m->obj_id;
+                float rib_wave = sinf(pt.y * 22.0f);
+                float feat = 0.16f;
+                if (pt.y > -3.72f && pt.y < -2.62f && rib_wave < -0.15f) {
+                    feat = 0.62f; // Horizontal dark intercostal rib shadow groove
+                }
+                best_feat = feat;
                 hit = true;
             }
         }
 
-        // 4. Right arm capsule
-        if (intersect_capsule(m->arm_r_p1, m->arm_r_p2, 0.13f, ro, rd, &t, &pt, &norm)) {
-            if (t < best_t) {
-                best_t = t;
-                best_pt = pt;
-                best_norm = norm;
-                best_feat = 0.35f;
-                best_id = m->obj_id;
-                hit = true;
-            }
+        // 6. Articulated bent skeletal arms (upper arm + upward-raised forearm + raised hand)
+        if (intersect_capsule(m->shoulder_l, m->elbow_l, 0.105f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.26f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->elbow_l, m->hand_l, 0.090f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.20f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->hand_l, (Vec3){m->hand_l.x, m->hand_l.y + 0.14f, m->hand_l.z}, 0.125f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.12f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->shoulder_r, m->elbow_r, 0.105f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.26f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->elbow_r, m->hand_r, 0.090f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.20f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->hand_r, (Vec3){m->hand_r.x, m->hand_r.y + 0.14f, m->hand_r.z}, 0.125f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.12f; best_id = m->obj_id; hit = true; }
         }
     }
 
@@ -3341,8 +3482,8 @@ static void update_simulation(void) {
     // -------------------------------------------------------------------------
     // STRICT FIRE PROJECTION: Heat originates strictly from burning wood & kindling
     // -------------------------------------------------------------------------
-    Vec3 target = (Vec3){0.0f, g_is_bloodborne ? 0.20f : (g_is_dark_souls ? 1.25f : -1.2f), 0.0f};
-    float cam_dist = g_is_bloodborne ? 24.5f : (g_is_dark_souls ? 25.2f : 28.0f);
+    Vec3 target = (Vec3){0.0f, g_is_bloodborne ? 0.25f : (g_is_dark_souls ? 1.25f : -1.2f), 0.0f};
+    float cam_dist = g_is_bloodborne ? 23.5f : (g_is_dark_souls ? 25.2f : 28.0f);
     Vec3 cam_pos = (Vec3){
         cam_dist * cosf(g_cam_pitch) * sinf(g_cam_yaw),
         target.y + cam_dist * sinf(g_cam_pitch),
@@ -3353,8 +3494,8 @@ static void update_simulation(void) {
     Vec3 right = vec3_norm(vec3_cross(fwd, up_w));
     Vec3 up = vec3_cross(right, fwd);
 
-    float world_w = g_is_bloodborne ? 18.2f : (g_is_dark_souls ? 21.6f : 22.0f);
-    float world_h = g_is_bloodborne ? 14.8f : (g_is_dark_souls ? 16.2f : 14.0f);
+    float world_h = g_is_bloodborne ? 11.4f : (g_is_dark_souls ? 16.2f : 14.0f);
+    float world_w = g_is_bloodborne ? (world_h * ((float)g_pixel_w / (float)g_pixel_h)) : (g_is_dark_souls ? 21.6f : 22.0f);
 
     // Reset next fire frame and depth buffer
     memset(g_next_fire, 0, sizeof(g_next_fire));
@@ -3459,20 +3600,18 @@ static void update_simulation(void) {
             int kx = (int)(((vec3_dot(rel, right) / world_w) + 0.5f) * g_pixel_w);
             int ky = (int)((0.5f - (vec3_dot(rel, up) / world_h)) * g_pixel_h);
             float kz = vec3_dot(rel, fwd);
-            float flicker = 0.88f + 0.18f * sinf(g_anim_time * 14.0f) + 0.10f * cosf(g_anim_time * 9.0f);
-            float val = (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.50f : 0.98f) * flicker;
+            float flicker = 0.88f + 0.14f * sinf(g_anim_time * 11.0f) + 0.08f * cosf(g_anim_time * 7.5f);
+            float val = (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.50f : 1.0f) * flicker;
 
-            for (int dy = -6; dy <= 4; dy++) {
-                for (int dx = -4; dx <= 4; dx++) {
+            for (int dy = -3; dy <= 2; dy++) {
+                for (int dx = -3; dx <= 3; dx++) {
                     int px = kx + dx, py = ky + dy;
                     if (px >= 0 && px < g_pixel_w && py >= 0 && py < g_pixel_h) {
-                        float ndx = (float)dx * 1.35f;
-                        float ndy = (dy < 0) ? ((float)dy * 0.70f) : ((float)dy * 1.30f);
-                        float d = sqrtf(ndx * ndx + ndy * ndy);
-                        if (d < 4.2f) {
-                            float h = val * (1.0f - d / 4.2f);
+                        float d = sqrtf((float)(dx * dx) * 1.15f + (float)(dy * dy) * 1.10f);
+                        if (d < 3.1f) {
+                            float h = val * (1.0f - d / 3.1f);
                             g_fire_heat[py][px] = fmaxf(g_fire_heat[py][px], h);
-                            if (kz - 0.18f < g_fire_z[py][px]) g_fire_z[py][px] = kz - 0.18f;
+                            if (kz - 0.10f < g_fire_z[py][px]) g_fire_z[py][px] = kz - 0.10f;
                         }
                     }
                 }
@@ -3583,7 +3722,7 @@ static void update_simulation(void) {
                 continue;
             }
 
-            float decay = g_is_bloodborne ? (0.038f + 0.024f * rand_f()) :
+            float decay = g_is_bloodborne ? (0.140f + 0.070f * rand_f()) :
                           (g_is_dark_souls ? (0.018f + 0.014f * rand_f()) : (0.032f + 0.030f * rand_f()));
             float val = fmaxf(0.0f, below - decay);
             g_next_fire[y][x] = val;
@@ -3633,29 +3772,33 @@ static void update_simulation(void) {
         }
     } else if (g_is_bloodborne) {
         if (g_bonfire_lit) {
-            // Candle sparks from inside cage
-            if (rand_f() < 0.15f) {
-                Vec3 p_c = (Vec3){ (rand_f() - 0.5f) * 0.12f, 2.30f + rand_f() * 0.20f, (rand_f() - 0.5f) * 0.12f };
-                Vec3 v_c = (Vec3){ (rand_f() - 0.5f) * 0.3f, rand_f() * 1.5f + 0.8f, (rand_f() - 0.5f) * 0.3f };
-                spawn_spark_3d(p_c, v_c, rand_range(15, 30), PALETTE_EMBERS[rand_range(2, 4)]);
+            // Subtle pale ghostly motes drifting around the suspended lantern
+            if (rand_f() < 0.22f) {
+                Vec3 p_c = (Vec3){
+                    g_lamp.flame_pos.x + (rand_f() - 0.5f) * 1.4f,
+                    g_lamp.flame_pos.y + (rand_f() - 0.5f) * 1.0f,
+                    g_lamp.flame_pos.z + (rand_f() - 0.5f) * 1.4f
+                };
+                Vec3 v_c = (Vec3){ (rand_f() - 0.5f) * 0.25f, rand_f() * 0.55f + 0.25f, (rand_f() - 0.5f) * 0.25f };
+                spawn_spark_3d(p_c, v_c, rand_range(22, 48), PALETTE_SPECTRAL[rand_range(2, 4)]);
             }
-            // Ethereal spectral motes floating up from around Messengers
-            float mote_prob = (g_fire_state == FIRE_STATE_SMOLDERING_REST) ? 0.25f : 0.60f;
+            // Ethereal ghostly dust motes floating slowly up from the Messengers into the dark night
+            float mote_prob = (g_fire_state == FIRE_STATE_SMOLDERING_REST) ? 0.20f : 0.48f;
             if (rand_f() < mote_prob) {
                 int m_idx = rand_range(0, NUM_MESSENGERS - 1);
                 Vec3 base_pos = g_messengers[m_idx].head_pos;
                 Vec3 p_mote = (Vec3){
-                    base_pos.x + (rand_f() - 0.5f) * 0.7f,
-                    base_pos.y + rand_f() * 0.6f,
-                    base_pos.z + (rand_f() - 0.5f) * 0.7f
+                    base_pos.x + (rand_f() - 0.5f) * 1.4f,
+                    base_pos.y - 1.2f + rand_f() * 1.8f,
+                    base_pos.z + (rand_f() - 0.5f) * 1.4f
                 };
                 Vec3 v_mote = (Vec3){
-                    (rand_f() - 0.5f) * 0.35f + sinf(p_mote.y * 3.0f + g_anim_time * 2.5f) * 0.25f,
-                    rand_f() * 0.9f + 0.5f,
-                    (rand_f() - 0.5f) * 0.35f
+                    (rand_f() - 0.5f) * 0.22f + sinf(p_mote.y * 2.5f + g_anim_time * 2.0f) * 0.16f,
+                    rand_f() * 0.55f + 0.30f,
+                    (rand_f() - 0.5f) * 0.22f
                 };
-                RGB mote_col = PALETTE_SPECTRAL[rand_range(1, 4)];
-                spawn_spark_3d(p_mote, v_mote, rand_range(25, 55), mote_col);
+                RGB mote_col = PALETTE_SPECTRAL[rand_range(1, 3)];
+                spawn_spark_3d(p_mote, v_mote, rand_range(28, 60), mote_col);
             }
         }
     } else if (g_sim_time < 2900.0f && rand_f() < (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.20f : 0.65f)) {
@@ -3724,8 +3867,8 @@ static void render_scene(void) {
     }
 
     // Compute Camera Vectors
-    Vec3 target = (Vec3){0.0f, g_is_bloodborne ? 0.20f : (g_is_dark_souls ? 1.25f : -1.2f), 0.0f};
-    float cam_dist = g_is_bloodborne ? 24.5f : (g_is_dark_souls ? 25.2f : 28.0f);
+    Vec3 target = (Vec3){0.0f, g_is_bloodborne ? 0.25f : (g_is_dark_souls ? 1.25f : -1.2f), 0.0f};
+    float cam_dist = g_is_bloodborne ? 23.5f : (g_is_dark_souls ? 25.2f : 28.0f);
     Vec3 cam_pos = (Vec3){
         cam_dist * cosf(g_cam_pitch) * sinf(g_cam_yaw),
         target.y + cam_dist * sinf(g_cam_pitch),
@@ -3736,8 +3879,8 @@ static void render_scene(void) {
     Vec3 right = vec3_norm(vec3_cross(fwd, up_w));
     Vec3 up = vec3_cross(right, fwd);
 
-    float world_w = g_is_bloodborne ? 18.2f : (g_is_dark_souls ? 21.6f : 22.0f);
-    float world_h = g_is_bloodborne ? 14.8f : (g_is_dark_souls ? 16.2f : 14.0f);
+    float world_h = g_is_bloodborne ? 11.4f : (g_is_dark_souls ? 16.2f : 14.0f);
+    float world_w = g_is_bloodborne ? (world_h * ((float)g_pixel_w / (float)g_pixel_h)) : (g_is_dark_souls ? 21.6f : 22.0f);
 
     // Fire point light positioned in the hearth core with organic flicker
     float fire_activity = fmaxf(g_ash_bed.heat, 0.0f);
@@ -3752,7 +3895,7 @@ static void render_scene(void) {
         }
     }
     float flicker = (1.0f + 0.22f * sinf(g_anim_time * 8.5f + sinf(g_anim_time * 17.0f)) + 0.14f * cosf(g_anim_time * 12.0f)) * fire_activity;
-    Vec3 light_pos = g_is_bloodborne ? (Vec3){0.0f, 2.22f, 0.0f} : (Vec3){0.0f, g_is_dark_souls ? -1.5f : -1.8f, 0.0f};
+    Vec3 light_pos = g_is_bloodborne ? g_lamp.flame_pos : (Vec3){0.0f, g_is_dark_souls ? -1.5f : -1.8f, 0.0f};
     float light_intensity = 2.6f * flicker;
     if ((g_is_dark_souls || g_is_bloodborne) && !g_bonfire_lit) {
         light_intensity = 0.40f;
@@ -3992,8 +4135,10 @@ static void render_scene(void) {
                     float gp_t = (ground_plane_y - ray_orig.y) / ray_dir.y;
                     if (gp_t > 0.1f && gp_t < closest_t) {
                         Vec3 gp_pt = vec3_add(ray_orig, vec3_scale(ray_dir, gp_t));
-                        float gp_r = sqrtf(gp_pt.x * gp_pt.x + gp_pt.z * gp_pt.z);
-                        if (gp_r < 8.8f) {
+                        float dx_c = gp_pt.x - g_lamp.lantern_pos.x;
+                        float dz_c = gp_pt.z - g_lamp.lantern_pos.z;
+                        float gp_r = sqrtf(dx_c * dx_c + dz_c * dz_c);
+                        if (gp_r < 5.0f) {
                             closest_t = gp_t;
                             ash_bed_pt = gp_pt;
                             ash_bed_norm = (Vec3){0.0f, 1.0f, 0.0f};
@@ -4222,34 +4367,42 @@ static void render_scene(void) {
                 float core_heat = g_ash_bed.heat * fmaxf(0.0f, 1.0f - r_core / 4.2f);
 
                 if (g_is_bloodborne) {
-                    float stone_scale_x = 1.35f;
-                    float stone_scale_z = 0.90f;
-                    float u_cobble = ash_bed_pt.x * stone_scale_x;
-                    float v_cobble = ash_bed_pt.z * stone_scale_z;
-                    int row_cobble = (int)floorf(v_cobble);
-                    if (row_cobble % 2 != 0) u_cobble += 0.5f;
-                    float cu = u_cobble - floorf(u_cobble);
-                    float cv = v_cobble - floorf(v_cobble);
-                    bool is_mortar = (cu < 0.10f || cu > 0.90f || cv < 0.12f || cv > 0.88f);
+                    // Moody dark weathered Yharnam flagstones fading smoothly into pitch-black night
+                    float dx_c = ash_bed_pt.x - g_lamp.lantern_pos.x;
+                    float dz_c = ash_bed_pt.z - g_lamp.lantern_pos.z;
+                    float r_c = sqrtf(dx_c * dx_c + dz_c * dz_c);
+                    float vig = fmaxf(0.0f, 1.0f - r_c / 4.85f);
+                    vig = vig * vig * (3.0f - 2.0f * vig); // smoothstep into pure black
 
-                    if (is_mortar) {
-                        g_shade_buf[y][x] = (RGB){14, 12, 18};
-                    } else {
-                        float stone_noise = (sinf(ash_bed_pt.x * 4.5f + ash_bed_pt.z * 3.8f) * 0.5f + 0.5f) * 0.20f;
-                        int c_idx = (int)((s_val + stone_noise) * 2.2f);
-                        if (c_idx < 1) c_idx = 1;
-                        if (c_idx > 4) c_idx = 4;
-                        RGB col = PALETTE_GOTHIC_IRON[c_idx];
+                    // Diagonal weathered large flagstone slabs with subtle cracked joints
+                    float gx = ash_bed_pt.x * 0.84f + ash_bed_pt.z * 0.54f;
+                    float gz = -ash_bed_pt.x * 0.54f + ash_bed_pt.z * 0.84f;
+                    float u_slab = gx * 0.52f;
+                    float v_slab = gz * 0.46f;
+                    int row_slab = (int)floorf(v_slab);
+                    if (row_slab & 1) u_slab += 0.42f;
+                    float su = u_slab - floorf(u_slab);
+                    float sv = v_slab - floorf(v_slab);
+                    bool is_crack = (su < 0.045f || su > 0.955f || sv < 0.050f || sv > 0.950f);
 
-                        float r_lamp = sqrtf(ash_bed_pt.x * ash_bed_pt.x + ash_bed_pt.z * ash_bed_pt.z);
-                        if (r_lamp < 4.2f && g_bonfire_lit) {
-                            float glow_factor = (1.0f - r_lamp / 4.2f) * 0.45f;
-                            col.r = (uint8_t)fminf(255.0f, col.r + PALETTE_SPECTRAL[2].r * glow_factor);
-                            col.g = (uint8_t)fminf(255.0f, col.g + PALETTE_SPECTRAL[2].g * glow_factor);
-                            col.b = (uint8_t)fminf(255.0f, col.b + PALETTE_SPECTRAL[2].b * glow_factor);
-                        }
-                        g_shade_buf[y][x] = col;
-                    }
+                    float tex = 0.82f + 0.18f * sinf(ash_bed_pt.x * 3.1f + ash_bed_pt.z * 2.7f)
+                                      * cosf(ash_bed_pt.x * 5.2f - ash_bed_pt.z * 4.1f);
+                    float illum = (g_bonfire_lit ? (0.48f + 0.65f * s_val) : 0.25f) * vig * tex;
+                    if (is_crack) illum *= 0.28f;
+
+                    // Subtle eerie pale misty greenish-slate pool directly beneath the Messengers
+                    float mist_pool = fmaxf(0.0f, 1.0f - r_c / 2.35f);
+                    mist_pool = mist_pool * mist_pool * (g_bonfire_lit ? 0.55f : 0.18f);
+
+                    float rf = (54.0f * illum) + (42.0f * mist_pool);
+                    float gf = (58.0f * illum) + (56.0f * mist_pool);
+                    float bf = (58.0f * illum) + (62.0f * mist_pool);
+
+                    g_shade_buf[y][x] = (RGB){
+                        (uint8_t)fminf(255.0f, rf),
+                        (uint8_t)fminf(255.0f, gf),
+                        (uint8_t)fminf(255.0f, bf)
+                    };
                     goto ash_done;
                 } else if (g_is_dark_souls) {
                     if (ash_bed_pt.y > -4.18f) {
@@ -4514,45 +4667,51 @@ static void render_scene(void) {
                 g_id_buf[y][x] = OBJ_LAMP_BASE;
                 g_depth_buf[y][x] = vec3_dot(vec3_sub(lamp_pt, cam_pos), fwd);
 
-                Vec3 l_vec = vec3_sub(light_pos, lamp_pt);
-                float l_dist = vec3_len(l_vec);
-                Vec3 l_dir = vec3_norm(l_vec);
-                float atten = 1.0f / (1.0f + 0.08f * l_dist + 0.015f * l_dist * l_dist);
-                float ndotl = fmaxf(0.0f, vec3_dot(lamp_norm, l_dir));
-
-                // Gothic Yharnam pale moonlight from upper-left-front
-                Vec3 moon_dir = vec3_norm((Vec3){-0.45f, 0.70f, 0.55f});
-                float moon_diff = fmaxf(0.0f, vec3_dot(lamp_norm, moon_dir));
-
-                Vec3 v_dir = vec3_norm(vec3_sub(cam_pos, lamp_pt));
-                Vec3 h_dir = vec3_norm(vec3_add(moon_dir, v_dir));
-                float spec = powf(fmaxf(0.0f, vec3_dot(lamp_norm, h_dir)), 10.0f) * 1.5f;
-
-                float front_amb = 0.45f + 0.22f * fmaxf(0.0f, lamp_norm.y) - 0.20f * lamp_norm.z;
-                float light_val = ndotl * atten * light_intensity * 2.4f + moon_diff * 0.75f + front_amb + spec;
-
-                if (lamp_part == 0 && lamp_pt.y < 1.45f && lamp_pt.y > -2.40f) {
-                    // Vertical fluting on wrought-iron column shaft
-                    float fl_ang = atan2f(lamp_pt.z, lamp_pt.x);
-                    float fluting = 0.5f + 0.5f * cosf(fl_ang * 12.0f);
-                    light_val *= (0.72f + 0.42f * fluting);
-                }
-
-                if (lamp_part == 1) {
-                    // Wax candle inside lantern cage: pale ivory wax with warm candle flame glow
-                    float candle_glow = fmaxf(0.0f, (lamp_pt.y - 1.75f) / 0.40f);
-                    g_shade_buf[y][x] = (RGB){
-                        (uint8_t)fminf(255.0f, 215.0f + candle_glow * 35.0f),
-                        (uint8_t)fminf(255.0f, 195.0f + candle_glow * 25.0f),
-                        (uint8_t)fminf(255.0f, 155.0f - candle_glow * 30.0f)
-                    };
+                if (lamp_part == 5) {
+                    // Blinding ghostly cold white-blue ethereal core inside the hanging lantern
+                    Vec3 v_dir = vec3_norm(vec3_sub(cam_pos, lamp_pt));
+                    float ndotv = fmaxf(0.0f, vec3_dot(lamp_norm, v_dir));
+                    int f_idx = (ndotv > 0.50f) ? 4 : ((ndotv > 0.22f) ? 3 : 2);
+                    if (g_fire_state == FIRE_STATE_SMOLDERING_REST && f_idx > 2) f_idx--;
+                    g_shade_buf[y][x] = PALETTE_BB_FLAME[f_idx];
                 } else {
-                    // Gothic Wrought Iron: dark charcoal with cold moonlight specular highlights
-                    int c_idx = (int)(light_val * 1.55f);
-                    if (spec > 0.42f) c_idx = 4;
-                    if (c_idx < 0) c_idx = 0;
-                    if (c_idx > 4) c_idx = 4;
-                    g_shade_buf[y][x] = PALETTE_GOTHIC_IRON[c_idx];
+                    Vec3 l_vec = vec3_sub(light_pos, lamp_pt);
+                    float l_dist = vec3_len(l_vec);
+                    Vec3 l_dir = vec3_norm(l_vec);
+                    float atten = 1.0f / (1.0f + 0.14f * l_dist + 0.04f * l_dist * l_dist);
+                    float ndotl = fmaxf(0.0f, vec3_dot(lamp_norm, l_dir));
+
+                    // Pale gothic Yharnam moonlight rim from upper-left-front
+                    Vec3 moon_dir = vec3_norm((Vec3){0.40f, 0.72f, -0.56f});
+                    float moon_diff = fmaxf(0.0f, vec3_dot(lamp_norm, moon_dir));
+
+                    Vec3 v_dir = vec3_norm(vec3_sub(cam_pos, lamp_pt));
+                    Vec3 h_dir = vec3_norm(vec3_add(l_dir, v_dir));
+                    float spec = powf(fmaxf(0.0f, vec3_dot(lamp_norm, h_dir)), 10.0f) * 1.4f * atten;
+
+                    float front_amb = 0.28f + 0.16f * fmaxf(0.0f, lamp_norm.y);
+                    float light_val = ndotl * atten * light_intensity * 2.6f + moon_diff * 0.52f + front_amb + spec;
+
+                    if (lamp_part == 4) {
+                        // Tarnished antique brass bell hanging under the crooked arch
+                        int b_idx = (int)(light_val * 2.0f + 0.8f);
+                        if (b_idx < 1) b_idx = 1;
+                        if (b_idx > 4) b_idx = 4;
+                        g_shade_buf[y][x] = PALETTE_BB_BRASS[b_idx];
+                    } else if (lamp_part == 1) {
+                        // Interior pale wax candle stub
+                        g_shade_buf[y][x] = g_bonfire_lit ? (RGB){215, 222, 245} : (RGB){125, 122, 118};
+                    } else {
+                        // Dark weathered wood/iron pole, chains, cage ribs & ornate gothic cap
+                        // Keep the crooked pole dark & moody, only catching a subtle cold steel rim gleam
+                        float pole_dim = (lamp_part == 0 && lamp_pt.x < -0.80f) ? 0.58f : 0.85f;
+                        int c_idx = (int)(light_val * 1.45f * pole_dim);
+                        if (lamp_part == 2 && l_dist < 1.35f && g_bonfire_lit) c_idx++;
+                        if (spec > 0.55f && g_bonfire_lit && l_dist < 2.2f) c_idx = 4;
+                        if (c_idx < 0) c_idx = 0;
+                        if (c_idx > 4) c_idx = 4;
+                        g_shade_buf[y][x] = PALETTE_GOTHIC_IRON[c_idx];
+                    }
                 }
 
             } else if (hit_type == 10) {
@@ -4560,21 +4719,37 @@ static void render_scene(void) {
                 g_depth_buf[y][x] = vec3_dot(vec3_sub(msgr_pt, cam_pos), fwd);
 
                 if (msgr_feat >= 0.85f) {
-                    // Deep hollow eye socket or open mouth void
+                    // Deep hollow black eye socket / nasal cavity / open mouth void
                     g_shade_buf[y][x] = PALETTE_MESSENGER[0];
                 } else {
                     Vec3 l_vec = vec3_sub(light_pos, msgr_pt);
                     float l_dist = vec3_len(l_vec);
                     Vec3 l_dir = vec3_norm(l_vec);
-                    float atten = 1.0f / (1.0f + 0.08f * l_dist + 0.015f * l_dist * l_dist);
-                    float ndotl = fmaxf(0.0f, vec3_dot(msgr_norm, l_dir));
-                    float amb = 0.82f + 0.28f * fmaxf(0.0f, msgr_norm.y) - 0.22f * msgr_norm.z;
-                    float light_val = ndotl * atten * light_intensity * 2.0f + amb;
+                    float atten = 1.0f / (1.0f + 0.06f * l_dist + 0.010f * l_dist * l_dist);
 
-                    int m_idx = (int)(light_val * 1.48f);
-                    if (msgr_feat > 0.20f && m_idx > 1) m_idx--; // Crevice / arm crease darkening
-                    if (m_idx < 1) m_idx = 1;
-                    if (m_idx > 4) m_idx = 4;
+                    // Half-Lambert wrap lighting so pale bone faces, necks, ribs & arms read clearly!
+                    float wrap_ndotl = fmaxf(0.0f, (vec3_dot(msgr_norm, l_dir) + 0.65f) / 1.65f);
+                    Vec3 v_dir = vec3_norm(vec3_sub(cam_pos, msgr_pt));
+                    float ndotv = fmaxf(0.0f, vec3_dot(msgr_norm, v_dir));
+
+                    float top_lit = fmaxf(0.0f, msgr_norm.y) * 0.45f;
+                    float lit_scale = g_bonfire_lit ? (0.85f + 0.40f * light_intensity * atten) : 0.62f;
+                    float light_val = (wrap_ndotl * 0.85f + ndotv * 0.48f + top_lit) * lit_scale;
+
+                    // Soft smooth fade only at the very bottom base into dark ground mist
+                    float mist_fade = fmaxf(0.0f, fminf(1.0f, (msgr_pt.y + 4.28f) / 0.65f));
+                    light_val *= (0.45f + 0.55f * mist_fade);
+
+                    int m_idx;
+                    if (msgr_feat > 0.50f) {
+                        // Crisp dark intercostal ribcage shadow stripes on skeletal torso
+                        m_idx = (light_val > 1.05f) ? 2 : 1;
+                    } else {
+                        m_idx = 1 + (int)(light_val * 2.15f);
+                        if (msgr_feat > 0.20f && m_idx > 2) m_idx--; // Spindly neck/arm tonal depth
+                        if (m_idx < 1) m_idx = 1; // Reserve index 0 strictly for hollow eyes & mouth!
+                        if (m_idx > 4) m_idx = 4;
+                    }
                     g_shade_buf[y][x] = PALETTE_MESSENGER[m_idx];
                 }
             }
@@ -4642,21 +4817,23 @@ static void render_scene(void) {
         for (int x = 0; x < g_pixel_w; x++) {
             float heat = g_fire_heat[y][x];
             if (heat > 0.05f) {
+                const RGB *fpal = g_is_bloodborne ? PALETTE_BB_FLAME : PALETTE_EMBERS;
                 RGB fire_col;
-                if (heat > 0.85f) fire_col = PALETTE_EMBERS[4];
-                else if (heat > 0.65f) fire_col = PALETTE_EMBERS[3];
-                else if (heat > 0.40f) fire_col = PALETTE_EMBERS[2];
-                else if (heat > 0.18f) fire_col = PALETTE_EMBERS[1];
-                else fire_col = PALETTE_EMBERS[0];
+                if (heat > 0.85f) fire_col = fpal[4];
+                else if (heat > 0.65f) fire_col = fpal[3];
+                else if (heat > 0.40f) fire_col = fpal[2];
+                else if (heat > 0.18f) fire_col = fpal[1];
+                else fire_col = fpal[0];
 
                 if (g_id_buf[y][x] > 0) {
                     if (g_is_bloodborne) {
                         if (g_id_buf[y][x] == OBJ_LAMP_BASE) {
-                            if (g_fire_z[y][x] < g_depth_buf[y][x] - 0.06f) {
+                            if (g_fire_z[y][x] < g_depth_buf[y][x] - 0.12f) {
                                 g_frame[y][x].color = fire_col;
                             } else {
+                                // Keep front iron bars dark & crisp with subtle translucent ethereal edge glow
                                 RGB base_c = g_frame[y][x].color;
-                                float fire_alpha = heat * 0.40f;
+                                float fire_alpha = heat * 0.22f;
                                 g_frame[y][x].color = (RGB){
                                     (uint8_t)fminf(255.0f, base_c.r * (1.0f - fire_alpha) + fire_col.r * fire_alpha),
                                     (uint8_t)fminf(255.0f, base_c.g * (1.0f - fire_alpha) + fire_col.g * fire_alpha),
@@ -4707,6 +4884,52 @@ static void render_scene(void) {
                     }
                 } else {
                     g_frame[y][x].color = fire_col;
+                    g_frame[y][x].is_sky = false;
+                }
+            }
+        }
+    }
+
+    // 3b. Bloodborne Volumetric Ghostly Lantern Light Halo (Cold White-Blue Radial Bloom in Night Mist)
+    if (g_is_bloodborne && g_bonfire_lit) {
+        Vec3 rel_l = vec3_sub(g_lamp.flame_pos, cam_pos);
+        float lz_s = vec3_dot(rel_l, fwd);
+        if (lz_s > 0.5f) {
+            float lx_f = ((vec3_dot(rel_l, right) / world_w) + 0.5f) * (float)g_pixel_w;
+            float ly_f = (0.5f - (vec3_dot(rel_l, up) / world_h)) * (float)g_pixel_h;
+            float rad_x = (float)g_pixel_h * 0.34f;
+            float rad_y = (float)g_pixel_h * 0.21f;
+            float bloom_strength = (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.35f : 0.82f)
+                                 * (0.92f + 0.08f * sinf(g_anim_time * 9.0f));
+
+            int y0 = (int)fmaxf(0.0f, ly_f - rad_y);
+            int y1 = (int)fminf((float)(g_pixel_h - 1), ly_f + rad_y);
+            int x0 = (int)fmaxf(0.0f, lx_f - rad_x);
+            int x1 = (int)fminf((float)(g_pixel_w - 1), lx_f + rad_x);
+
+            for (int y = y0; y <= y1; y++) {
+                float dy = ((float)y - ly_f) / rad_y;
+                for (int x = x0; x <= x1; x++) {
+                    float dx = ((float)x - lx_f) / rad_x;
+                    float d2 = dx * dx + dy * dy;
+                    if (d2 >= 1.0f) continue;
+
+                    float d = sqrtf(d2);
+                    float glow = expf(-d2 * 4.8f) * (1.0f - d) * bloom_strength;
+                    if (glow < 0.025f) continue;
+
+                    // Keep front iron cage bars readable silhouettes against the misty halo
+                    if (g_id_buf[y][x] == OBJ_LAMP_BASE && g_depth_buf[y][x] < lz_s - 0.22f) {
+                        glow *= 0.25f;
+                    }
+
+                    // Extra blazing white-blue glass halo right inside the lantern chamber
+                    float inner = (d < 0.28f) ? (1.0f - d / 0.28f) * 0.55f * bloom_strength : 0.0f;
+                    RGB c = g_frame[y][x].color;
+                    c.r = (uint8_t)fminf(255.0f, (float)c.r + 108.0f * glow + 160.0f * inner);
+                    c.g = (uint8_t)fminf(255.0f, (float)c.g + 122.0f * glow + 175.0f * inner);
+                    c.b = (uint8_t)fminf(255.0f, (float)c.b + 188.0f * glow + 210.0f * inner);
+                    g_frame[y][x].color = c;
                     g_frame[y][x].is_sky = false;
                 }
             }
@@ -5690,13 +5913,15 @@ static void ignite_fireplace(bool is_rekindle) {
         }
     }
 
-    for (int y = 0; y < g_pixel_h; y++) {
-        for (int x = 0; x < g_pixel_w; x++) {
-            int cx = g_pixel_w / 2;
-            int cy = g_is_bloodborne ? (int)(g_pixel_h * 0.40f) : (int)(g_pixel_h * 0.72f);
-            int dx = x - cx, dy = y - cy;
-            if (dx*dx + dy*dy < (g_is_bloodborne ? 90 : 140)) {
-                g_fire_heat[y][x] = 0.95f;
+    if (!g_is_bloodborne) {
+        for (int y = 0; y < g_pixel_h; y++) {
+            for (int x = 0; x < g_pixel_w; x++) {
+                int cx = g_pixel_w / 2;
+                int cy = (int)(g_pixel_h * 0.72f);
+                int dx = x - cx, dy = y - cy;
+                if (dx*dx + dy*dy < 140) {
+                    g_fire_heat[y][x] = 0.95f;
+                }
             }
         }
     }

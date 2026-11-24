@@ -842,14 +842,14 @@ static void start_ambient_sound(bool is_dark_souls, int volume_pct) {
                     if (music_pos >= firelink_total_samples) music_pos = 0;
                 }
 
-                float fire_gain = 1.45f;
-                float music_gain = 0.09f;
+                float fire_gain = 1.40f;
+                float music_gain = 0.135f;
                 float mixed;
                 if (cur_track == MUSIC_TRACK_NONE) {
                     mixed = fire_s * fire_gain * vol_factor;
                 } else {
-                    // Fire ambience (crackle / white noise) is front and center;
-                    // Lofi slowed music sits gently as a soft, warm atmospheric backdrop.
+                    // Balanced mix: fire crackle/white noise is clearly defined
+                    // with the lofi slowed music sitting just beneath it in harmonic warmth.
                     mixed = (fire_s * fire_gain + music_s * music_gain) * vol_factor;
                 }
 

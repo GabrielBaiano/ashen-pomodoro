@@ -1,6 +1,6 @@
 # Maintainer: GabrielBaiano <gabrielngama@gmail.com>
 pkgname=bonfire-pomodoro
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Dark Souls-inspired physical bonfire Pomodoro timer rendered in 3D TrueColor ASCII art"
 arch=('x86_64' 'aarch64')
@@ -15,7 +15,7 @@ optdepends=(
     'alsa-utils: ambient audio and alert chimes'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('d178d40da41898e4f039b7e6631f0fc1a4e85962b427b7038680878297bdc3e6')
+sha256sums=('cdd09659d3d704f313564a1e61e9c19e57abf54565a13d4171cf207c2d35d940')
 
 build() {
     cd "$pkgname-$pkgver"

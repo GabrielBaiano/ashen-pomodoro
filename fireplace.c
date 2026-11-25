@@ -6707,10 +6707,10 @@ static const char *MENU_NFO_HALF[MENU_NFO_PH] = {
     "..##..##...............................",
     "..#*..###..............................",
     ".##....###.............................",
-    ".##..###.#.............................",
-    "..####...#.............................",
-    "..##.##................................",
-    ".##...###..............................",
+    ".##..###.###.....####........####......",
+    "..####...#####*###..##########..#####*#",
+    "..##.##.....###........##.......###.##.",
+    ".##...###............................#.",
     ".#......##.............................",
     ".........#.............................",
     ".......................................",
@@ -7145,7 +7145,7 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
                 int x0 = nx0 + ax, y0 = ny0 + ay;
                 float seed = (float)(ax * 13 + ay * 7) * 0.37f;
                 float flicker = 0.65f + 0.35f * sinf(anim_t * 6.2f + seed);
-                int flame_h = (ay == 26) ? 2 : (int)(2.5f + 2.2f * flicker);
+                int flame_h = (ay >= 24) ? 1 : (int)(2.5f + 2.2f * flicker);
 
                 for (int fy = 1; fy <= flame_h; fy++) {
                     float t = (float)fy / (float)(flame_h + 1);
@@ -7153,8 +7153,9 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
                     int fx = x0 + (int)lroundf(sway);
                     int fyy = y0 - fy;
                     if (fx < 0 || fx >= cols || fyy < 0 || fyy >= ph) continue;
-                    // Never overwrite text safe zone (cols nx0+10 .. nx0+MENU_NFO_W-11) except center knot
-                    if (ay != 26 && fx >= nx0 + 10 && fx <= nx0 + MENU_NFO_W - 11) continue;
+                    // Never overwrite text safe zone (cols nx0+10 .. nx0+MENU_NFO_W-11) except along the lower root arch
+                    if (ay < 24 && fx >= nx0 + 10 && fx <= nx0 + MENU_NFO_W - 11) continue;
+                    if (ay >= 24 && fyy < ny0 + 24) continue;
                     uint8_t cur = menu_mat_at(fx, fyy);
                     if (cur == MM_NONE || cur == MM_VOID) {
                         float fp = 5.4f * (1.0f - t) + 1.2f * flicker;
@@ -7167,7 +7168,8 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
                 for (int dr = -1; dr <= 1; dr++) {
                     for (int dc = -2; dc <= 2; dc++) {
                         int gc = x0 + dc, gr = kr + dr;
-                        if (ay != 26 && gc >= nx0 + 10 && gc <= nx0 + MENU_NFO_W - 11) continue;
+                        if (ay < 24 && gc >= nx0 + 10 && gc <= nx0 + MENU_NFO_W - 11) continue;
+                        if (ay >= 24 && (gr < box_top_r + 12 || gr > box_top_r + 13)) continue;
                         float d2 = (float)(dc * dc) * 0.55f + (float)(dr * dr) * 1.4f;
                         float g = (0.34f * flicker) * expf(-d2 * 0.65f);
                         if (g > 0.05f) menu_glow_add(gc, gr, rows, g);
@@ -7207,7 +7209,7 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
             bool skip_header = (r == box_top_r + 1 && c >= box_left_c + 20 && c <= box_left_c + MENU_NFO_W - 21);
             bool skip_body   = (c >= text_c0 && c <= text_c1 &&
                                 ((r >= box_top_r + 3 && r <= box_top_r + 9) ||
-                                 r == box_top_r + 11 || r == box_top_r + 12 || r == box_top_r + 14));
+                                 r == box_top_r + 11 || r == box_top_r + 14));
             if (skip_header || skip_body) {
                 positioned = false;
                 continue;
@@ -7503,12 +7505,7 @@ static bool run_setup_menu(void) {
             "\033[%d;%dH\033[49m%*s\033[1;38;2;%d;%d;%dm%s\033[0;49m%*s\033[0m",
             start_r + 11, start_c + 10, cta_pad_l, "", cr, cg, cb, cta_str, cta_pad_r, "");
 
-        // Slender curved bottom arc divider with glowing ember diamond (replaces blocky bar)
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[49m  \033[38;2;78;72;76m╰───────────\033[38;2;126;116;118m─────\033[38;2;186;112;46m══─── \033[1;38;2;%d;%d;%dm◆\033[0;49m\033[38;2;186;112;46m ───══\033[38;2;126;116;118m─────\033[38;2;78;72;76m───────────╯  \033[0m",
-            start_r + 12, start_c + 10, cr, cg, cb);
-
-        // Understated 1-line controls legend centered cleanly below the arc
+        // Understated 1-line controls legend centered cleanly below the burning root bridge
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
             "\033[%d;%dH\033[49m          \033[38;2;138;142;160m↑↓\033[38;2;96;100;116m nav · \033[38;2;138;142;160m←→\033[38;2;96;100;116m adjust · \033[38;2;138;142;160m1-7\033[38;2;96;100;116m jump · \033[38;2;138;142;160mq\033[38;2;96;100;116m exit          \033[0m",
             start_r + 14, start_c + 10);

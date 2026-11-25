@@ -6747,98 +6747,156 @@ static inline void menu_glow_add(int c, int r, int rows, float v) {
 }
 
 /* ---------------------------------------------------------------------------
- * "ASHEN HOUR" chiseled ANSI logo
- * 8x12 block font, 3px strokes. A narrow 6px variant is derived by dropping
- * the middle column of each stroke, for terminals under ~88 columns.
+ * "ASHEN" title logo, Dark Souls style
+ * Trajan-like serif capitals built from vector strokes (thick stems, hairline
+ * cross strokes, wedge serifs), rasterized at whatever size fits the terminal,
+ * shaded as chrome steel lit from below by the Darksign eclipse burning
+ * behind the centre letter. "H O U R" sits underneath as a spaced subtitle.
  * ------------------------------------------------------------------------- */
-static const char *MENU_FONT[8][12] = {
-    { // A
-        ".######.", "########", "###..###", "###..###", "###..###", "########",
-        "########", "###..###", "###..###", "###..###", "###..###", "###..###"
-    },
-    { // S
-        ".#######", "########", "###.....", "###.....", "###.....", "#######.",
-        ".#######", ".....###", ".....###", ".....###", "########", "#######."
-    },
-    { // H
-        "###..###", "###..###", "###..###", "###..###", "###..###", "########",
-        "########", "###..###", "###..###", "###..###", "###..###", "###..###"
-    },
-    { // E
-        "########", "########", "###.....", "###.....", "###.....", "######..",
-        "######..", "###.....", "###.....", "###.....", "########", "########"
-    },
-    { // N (blocky arch, demoscene style)
-        ".######.", "########", "###..###", "###..###", "###..###", "###..###",
-        "###..###", "###..###", "###..###", "###..###", "###..###", "###..###"
-    },
-    { // O
-        ".######.", "########", "###..###", "###..###", "###..###", "###..###",
-        "###..###", "###..###", "###..###", "###..###", "########", ".######."
-    },
-    { // U
-        "###..###", "###..###", "###..###", "###..###", "###..###", "###..###",
-        "###..###", "###..###", "###..###", "###..###", "########", ".######."
-    },
-    { // R
-        "#######.", "########", "###..###", "###..###", "###..###", "########",
-        "#######.", "###.###.", "###..###", "###..###", "###..###", "###..###"
-    }
-};
+static float menu_fbm2(float x, float y) {
+    return 0.55f * menu_vnoise2(x, y)
+         + 0.30f * menu_vnoise2(x * 2.03f + 17.0f, y * 2.03f + 5.0f)
+         + 0.15f * menu_vnoise2(x * 4.11f + 3.0f, y * 4.11f + 29.0f);
+}
 
-static int menu_font_index(char c) {
-    switch (c) {
-        case 'A': return 0; case 'S': return 1; case 'H': return 2; case 'E': return 3;
-        case 'N': return 4; case 'O': return 5; case 'U': return 6; case 'R': return 7;
-        default: return -1;
+typedef struct { float x0, y0, x1, y1, t; } MenuStroke;
+#define MENU_MAX_STROKES 64
+typedef struct { float w; int n; MenuStroke s[MENU_MAX_STROKES]; } MenuGlyph;
+
+#define MENU_TK 0.150f  // thick stem (em)
+#define MENU_TN 0.058f  // hairline (em)
+#define MENU_TRACK 0.22f
+
+static MenuGlyph s_title_glyphs[5];
+static bool s_title_built = false;
+
+static void mg_line(MenuGlyph *g, float x0, float y0, float x1, float y1, float t) {
+    if (g->n >= MENU_MAX_STROKES) return;
+    MenuStroke *s = &g->s[g->n++];
+    s->x0 = x0; s->y0 = y0; s->x1 = x1; s->y1 = y1; s->t = t;
+}
+
+// Cubic bezier sampled into strokes; thickness follows t0 -> tmid -> t1
+static void mg_bezier(MenuGlyph *g, float ax, float ay, float bx, float by,
+                      float cx_, float cy_, float dx, float dy,
+                      float t0, float tmid, float t1) {
+    const int N = 10;
+    float px = ax, py = ay;
+    for (int i = 1; i <= N; i++) {
+        float u = (float)i / (float)N, w = 1.0f - u;
+        float x = w * w * w * ax + 3.0f * w * w * u * bx + 3.0f * w * u * u * cx_ + u * u * u * dx;
+        float y = w * w * w * ay + 3.0f * w * w * u * by + 3.0f * w * u * u * cy_ + u * u * u * dy;
+        float um = ((float)i - 0.5f) / (float)N;
+        float t = (um < 0.5f) ? (t0 + (tmid - t0) * (um / 0.5f)) : (tmid + (t1 - tmid) * ((um - 0.5f) / 0.5f));
+        mg_line(g, px, py, x, y, t);
+        px = x; py = y;
     }
 }
 
-static const char *MENU_LOGO_TEXT = "ASHEN HOUR";
+static void menu_build_title_glyphs(void) {
+    if (s_title_built) return;
+    memset(s_title_glyphs, 0, sizeof(s_title_glyphs));
+    MenuGlyph *g;
+
+    // A: hairline left diagonal, thick right diagonal, pointed apex, wedge feet
+    g = &s_title_glyphs[0]; g->w = 1.00f;
+    mg_line(g, 0.11f, 0.99f, 0.50f, -0.02f, MENU_TN);
+    mg_line(g, 0.50f, -0.02f, 0.88f, 0.99f, MENU_TK);
+    mg_line(g, 0.28f, 0.64f, 0.73f, 0.64f, MENU_TN);
+    mg_line(g, 0.00f, 0.985f, 0.24f, 0.985f, MENU_TN);
+    mg_line(g, 0.72f, 0.985f, 1.00f, 0.985f, MENU_TN);
+
+    // S: thin terminals, heavy diagonal spine, barbed serifs
+    g = &s_title_glyphs[1]; g->w = 0.74f;
+    mg_bezier(g, 0.66f, 0.15f, 0.58f, -0.01f, 0.12f, -0.02f, 0.11f, 0.24f, MENU_TN, MENU_TN * 1.5f, MENU_TN * 2.0f);
+    mg_bezier(g, 0.11f, 0.24f, 0.10f, 0.46f, 0.66f, 0.50f, 0.65f, 0.75f, MENU_TN * 2.0f, MENU_TK, MENU_TN * 2.0f);
+    mg_bezier(g, 0.65f, 0.75f, 0.64f, 1.01f, 0.14f, 1.03f, 0.05f, 0.84f, MENU_TN * 2.0f, MENU_TN * 1.5f, MENU_TN);
+    mg_line(g, 0.66f, 0.04f, 0.66f, 0.21f, MENU_TN);
+    mg_line(g, 0.05f, 0.77f, 0.05f, 0.96f, MENU_TN);
+
+    // H: twin thick stems, hairline bar, bracketed serifs
+    g = &s_title_glyphs[2]; g->w = 1.00f;
+    mg_line(g, 0.17f, 0.075f, 0.17f, 0.925f, MENU_TK);
+    mg_line(g, 0.83f, 0.075f, 0.83f, 0.925f, MENU_TK);
+    mg_line(g, 0.17f, 0.50f, 0.83f, 0.50f, MENU_TN);
+    mg_line(g, 0.02f, 0.015f, 0.32f, 0.015f, MENU_TN);
+    mg_line(g, 0.68f, 0.015f, 0.98f, 0.015f, MENU_TN);
+    mg_line(g, 0.02f, 0.985f, 0.32f, 0.985f, MENU_TN);
+    mg_line(g, 0.68f, 0.985f, 0.98f, 0.985f, MENU_TN);
+
+    // E: thick stem, hairline arms ending in wedge serifs
+    g = &s_title_glyphs[3]; g->w = 0.76f;
+    mg_line(g, 0.17f, 0.075f, 0.17f, 0.925f, MENU_TK);
+    mg_line(g, 0.17f, 0.025f, 0.68f, 0.025f, MENU_TN * 1.3f);
+    mg_line(g, 0.69f, 0.02f, 0.71f, 0.19f, MENU_TN);
+    mg_line(g, 0.17f, 0.50f, 0.57f, 0.50f, MENU_TN);
+    mg_line(g, 0.57f, 0.42f, 0.57f, 0.58f, MENU_TN);
+    mg_line(g, 0.17f, 0.975f, 0.72f, 0.975f, MENU_TN * 1.3f);
+    mg_line(g, 0.73f, 0.79f, 0.74f, 0.98f, MENU_TN);
+    mg_line(g, 0.02f, 0.015f, 0.17f, 0.015f, MENU_TN);
+    mg_line(g, 0.02f, 0.985f, 0.17f, 0.985f, MENU_TN);
+
+    // N: hairline stems, heavy diagonal, serifs
+    g = &s_title_glyphs[4]; g->w = 1.00f;
+    mg_line(g, 0.15f, 0.03f, 0.15f, 0.97f, MENU_TN);
+    mg_line(g, 0.17f, 0.06f, 0.82f, 0.95f, MENU_TK);
+    mg_line(g, 0.84f, 0.03f, 0.84f, 0.99f, MENU_TN);
+    mg_line(g, 0.00f, 0.015f, 0.24f, 0.015f, MENU_TN);
+    mg_line(g, 0.00f, 0.985f, 0.30f, 0.985f, MENU_TN);
+    mg_line(g, 0.72f, 0.015f, 0.98f, 0.015f, MENU_TN);
+
+    s_title_built = true;
+}
+
+static float menu_title_em_width(void) {
+    menu_build_title_glyphs();
+    float w = 0.0f;
+    for (int i = 0; i < 5; i++) w += s_title_glyphs[i].w;
+    return w + 4.0f * MENU_TRACK;
+}
+
 static uint8_t s_logo_mask[MENU_MAX_ROWS * 2][MENU_MAX_COLS];
 static float s_menu_tex[MENU_MAX_ROWS][MENU_MAX_COLS];
 
 typedef struct {
-    int scale;   // pixel replication factor
-    bool narrow; // 6px letters instead of 8px
-    int width;   // in columns (= subpixels horizontally)
-    int rows;    // terminal rows used by the logo (incl. outline/shadow)
+    int scale;   // letter height in subpixels (0 = no logo)
+    int width;   // logo width in columns
+    int rows;    // terminal rows used by logo block incl. subtitle
 } MenuLogoLayout;
+
+static int menu_logo_block_rows(int H) {
+    int art_px = (int)ceilf((float)H * 1.95f);    // eclipse corona above/below letters
+    return (art_px + 1) / 2 + 2;                  // + subtitle row + spacer
+}
 
 static MenuLogoLayout menu_logo_layout(int cols, int rows, int box_h) {
     MenuLogoLayout L;
     memset(&L, 0, sizeof(L));
-    for (int k = 2; k >= 1; k--) {
-        for (int n = 0; n <= 1; n++) {
-            int lw = (n ? 6 : 8) * k;
-            int gap = 1 * k;
-            int wgap = (n ? 3 : 4) * k;
-            int w = 0, letters = 0;
-            for (const char *p = MENU_LOGO_TEXT; *p; p++) {
-                if (*p == ' ') { w += wgap; continue; }
-                if (letters > 0 && p[-1] != ' ') w += gap;
-                w += lw;
-                letters++;
-            }
-            int lr = (12 * k + 4) / 2; // 1px outline top + 3px shadow/outline bottom
-            if (w + 4 <= cols && lr + 1 + box_h + 1 <= rows) {
-                L.scale = k; L.narrow = (n == 1); L.width = w; L.rows = lr;
-                return L;
-            }
-        }
-    }
-    return L; // scale 0 => no logo
-}
-
-static bool menu_font_px(int gi, int fx, int fy, bool narrow) {
-    static const int NARROW_MAP[6] = { 0, 2, 3, 4, 5, 7 };
-    int sx = narrow ? NARROW_MAP[fx] : fx;
-    return MENU_FONT[gi][fy][sx] == '#';
+    float em = menu_title_em_width();
+    int H = (int)floorf((float)(cols - 8) / em);
+    if (H > 30) H = 30;
+    while (H >= 12 && menu_logo_block_rows(H) + 1 + box_h > rows) H--;
+    if (H < 12) return L;
+    L.scale = H;
+    L.width = (int)ceilf(em * (float)H);
+    L.rows = menu_logo_block_rows(H);
+    return L;
 }
 
 static inline uint8_t menu_logo_at(int x, int y) {
     if (x < 0 || x >= s_mcols || y < 0 || y >= s_mph) return 0;
     return s_logo_mask[y][x];
+}
+
+static float menu_seg_dist(float px, float py, const MenuStroke *s, float ox, float oy, float H) {
+    float ax = ox + s->x0 * H, ay = oy + s->y0 * H;
+    float bx = ox + s->x1 * H, by = oy + s->y1 * H;
+    float vx = bx - ax, vy = by - ay;
+    float l2 = vx * vx + vy * vy;
+    float t = (l2 > 1e-6f) ? (((px - ax) * vx + (py - ay) * vy) / l2) : 0.0f;
+    t = menu_clampf(t, 0.0f, 1.0f);
+    float dx = px - (ax + vx * t), dy = py - (ay + vy * t);
+    return sqrtf(dx * dx + dy * dy);
 }
 
 static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
@@ -6863,136 +6921,168 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
     int box_right_c = start_c - 1 + box_w - 1;
 
     MenuLogoLayout LL = menu_logo_layout(cols, rows, box_h);
-    int k = LL.scale;
-    int lx0 = 0, lx1 = 0, ly0 = 0, lh = 0, ashen_x1 = 0;
+    int H = LL.scale;
     int logo_top_r = box_top_r - 1 - LL.rows;
+    int sub_r = -1, lx0 = 0, lx1 = 0;
 
-    if (k > 0 && logo_top_r >= 0) {
-        int lw = (LL.narrow ? 6 : 8) * k;
-        int gap = k, wgap = (LL.narrow ? 3 : 4) * k;
-        lh = 12 * k;
+    if (H > 0 && logo_top_r >= 0) {
+        menu_build_title_glyphs();
+        float Hf = (float)H;
+        int block_top_py = logo_top_r * 2;
+        sub_r = logo_top_r + LL.rows - 2;
+        int block_bot_py = sub_r * 2; // art must stay above subtitle row
+        float cy = (float)block_top_py + ((float)(block_bot_py - block_top_py)) * 0.5f;
+        float oy = cy - Hf * 0.5f;
         lx0 = (cols - LL.width) / 2;
         lx1 = lx0 + LL.width - 1;
-        ly0 = logo_top_r * 2 + 1;
 
-        // ---- Rasterize the text mask (1 = ASHEN, 2 = HOUR) ----
-        int x = lx0;
-        int word = 1;
-        for (const char *p = MENU_LOGO_TEXT; *p; p++) {
-            if (*p == ' ') { ashen_x1 = x - 1; x += wgap; word = 2; continue; }
-            if (p != MENU_LOGO_TEXT && p[-1] != ' ') x += gap;
-            int gi = menu_font_index(*p);
-            if (gi >= 0) {
-                for (int py = 0; py < lh; py++) {
-                    for (int px = 0; px < lw; px++) {
-                        if (menu_font_px(gi, px / k, py / k, LL.narrow)) {
-                            int X = x + px, Y = ly0 + py;
-                            if (X >= 0 && X < cols && Y >= 0 && Y < ph) s_logo_mask[Y][X] = (uint8_t)word;
+        // Letter origins
+        float gx[5];
+        {
+            float x = (float)lx0;
+            for (int i = 0; i < 5; i++) { gx[i] = x; x += (s_title_glyphs[i].w + MENU_TRACK) * Hf; }
+        }
+        float ecx = gx[2] + s_title_glyphs[2].w * Hf * 0.5f;
+
+        // ---- Rasterize letter mask from strokes ----
+        for (int i = 0; i < 5; i++) {
+            const MenuGlyph *g = &s_title_glyphs[i];
+            int x0 = (int)floorf(gx[i] - 0.15f * Hf), x1 = (int)ceilf(gx[i] + (g->w + 0.15f) * Hf);
+            int y0 = (int)floorf(oy - 0.1f * Hf), y1 = (int)ceilf(oy + 1.1f * Hf);
+            for (int y = y0; y <= y1; y++) {
+                if (y < 0 || y >= ph) continue;
+                for (int x = x0; x <= x1; x++) {
+                    if (x < 0 || x >= cols) continue;
+                    float px = (float)x + 0.5f, py = (float)y + 0.5f;
+                    for (int k = 0; k < g->n; k++) {
+                        float r = fmaxf(g->s[k].t * Hf * 0.5f, 0.62f);
+                        if (menu_seg_dist(px, py, &g->s[k], gx[i], oy, Hf) <= r) {
+                            s_logo_mask[y][x] = 1;
+                            break;
                         }
                     }
                 }
             }
-            x += lw;
         }
 
-        // Slow diagonal light sweep across the letters
-        float sweep_period = (float)(LL.width + 60);
-        float sweep = fmodf(anim_t * 26.0f, sweep_period) - 20.0f;
+        // ---- Darksign eclipse behind the centre letter ----
+        float R = Hf * 0.66f;
+        float r_out = R * 1.75f;
+        for (int y = block_top_py; y < block_bot_py; y++) {
+            for (int x = (int)floorf(ecx - r_out); x <= (int)ceilf(ecx + r_out); x++) {
+                float dx = (float)x + 0.5f - ecx, dy = (float)y + 0.5f - cy;
+                float r = sqrtf(dx * dx + dy * dy);
+                float rn = r / R;
+                if (rn < 0.70f) {
+                    menu_put(x, y, MM_VOID, (rn > 0.60f) ? 1.0f : 0.0f);
+                } else if (rn < 1.0f) {
+                    float n = menu_vnoise2(dx * 0.6f + anim_t * 1.2f, dy * 0.6f);
+                    menu_put(x, y, MM_FIRE, 6.9f - 2.8f * ((rn - 0.70f) / 0.30f) + (n - 0.5f) * 0.9f);
+                } else if (r < r_out) {
+                    float ux = dx / (r + 0.001f), uy = dy / (r + 0.001f);
+                    float n = menu_fbm2(ux * 1.8f + 10.0f, uy * 1.8f + 10.0f - anim_t * 0.8f);
+                    float n2 = menu_vnoise2(r * 0.5f - anim_t * 3.0f, (ux + uy) * 3.0f + 40.0f);
+                    float Lf = R * (0.18f + 0.95f * n * n) * (1.0f + 0.35f * fmaxf(0.0f, -uy));
+                    float f = 1.0f - (r - R) / Lf + (n2 - 0.5f) * 0.5f;
+                    if (f > 0.0f) menu_put(x, y, MM_FIRE, menu_clampf(0.5f + f * 4.6f, 0.0f, 6.2f));
+                }
+            }
+        }
+        // Bleeding drip from the eclipse down toward the subtitle
+        {
+            float dtop = cy + R * 0.85f;
+            for (int y = (int)dtop; y < block_bot_py; y++) {
+                float t = ((float)y - dtop) / ((float)block_bot_py - dtop + 0.01f);
+                float sway = sinf((float)y * 0.6f - anim_t * 3.0f) * 0.45f * t;
+                float w = (R * 0.16f + 0.5f) * (1.0f - 0.55f * t);
+                for (int x = (int)floorf(ecx - w - 1.0f); x <= (int)ceilf(ecx + w + 1.0f); x++) {
+                    float dd = fabsf((float)x + 0.5f - (ecx + sway));
+                    if (dd <= w + 0.1f) menu_put(x, y, MM_FIRE, 6.4f - 3.0f * (dd / (w + 0.2f)) - 2.0f * t);
+                }
+            }
+        }
+        // Soft transparent corona
+        for (int r = logo_top_r; r < sub_r; r++) {
+            for (int c = (int)(ecx - r_out * 1.8f); c <= (int)(ecx + r_out * 1.8f); c++) {
+                float dx = (float)c + 0.5f - ecx, dy = (float)(r * 2 + 1) - cy;
+                float d = sqrtf(dx * dx + dy * dy);
+                menu_glow_add(c, r, rows, 0.30f * expf(-powf(fmaxf(0.0f, d - R * 1.1f) / (R * 0.6f), 2.0f)));
+            }
+        }
 
-        // ---- Shade letters, outline and drop shadow ----
-        for (int y = ly0 - 2; y <= ly0 + lh + 3; y++) {
-            for (int X = lx0 - 3; X <= lx1 + 4; X++) {
-                if (X < 0 || X >= cols || y < 0 || y >= ph) continue;
-                uint8_t m = s_logo_mask[y][X];
-                if (m) {
-                    float v = (float)(y - ly0) / (float)(lh - 1);
-                    bool up = !menu_logo_at(X, y - 1), left = !menu_logo_at(X - 1, y);
-                    bool down = !menu_logo_at(X, y + 1), right = !menu_logo_at(X + 1, y);
-                    bool hi = up || left;
-                    bool lo = (down || right) && !hi;
-                    bool hi2 = !hi && !lo && (!menu_logo_at(X - 2, y) || !menu_logo_at(X, y - 2));
-                    float sw = (float)(X - lx0) + (float)(y - ly0) * 0.6f - sweep;
-                    float shine = (fabsf(sw) < 2.5f) ? (1.0f - fabsf(sw) / 2.5f) : 0.0f;
+        // ---- Letters: dark outline, then chrome steel with fire underlight ----
+        float sweep = fmodf(anim_t * 24.0f, (float)(LL.width + 70)) - 25.0f;
+        for (int y = block_top_py; y < block_bot_py; y++) {
+            for (int x = lx0 - 2; x <= lx1 + 2; x++) {
+                if (x < 0 || x >= cols) continue;
+                if (s_logo_mask[y][x]) continue;
+                bool near = false;
+                for (int dy = -1; dy <= 1 && !near; dy++)
+                    for (int dx = -1; dx <= 1 && !near; dx++)
+                        if (menu_logo_at(x + dx, y + dy)) near = true;
+                if (near) menu_put(x, y, MM_VOID, 0.0f);
+            }
+        }
+        for (int y = block_top_py; y < block_bot_py; y++) {
+            for (int x = lx0; x <= lx1; x++) {
+                if (x < 0 || x >= cols || !s_logo_mask[y][x]) continue;
+                float v = ((float)y + 0.5f - oy) / Hf;
+                bool up = !menu_logo_at(x, y - 1), left = !menu_logo_at(x - 1, y);
+                bool down = !menu_logo_at(x, y + 1), right = !menu_logo_at(x + 1, y);
+                bool hi = up || left;
+                bool lo = (down || right) && !hi;
 
-                    if (m == 1) {
-                        float pos = 6.3f - 4.4f * v;
-                        if (hi) pos = 7.3f - 1.6f * v;
-                        else if (lo) pos -= 1.9f;
-                        else if (hi2) pos += 0.6f;
-                        // Cooled crust cracks across the molten letters
-                        float cr = fabsf(menu_vnoise2((float)X * 0.30f / (float)k, (float)y * 0.45f / (float)k) - 0.5f);
-                        if (!hi && !lo && cr < 0.028f) pos = 1.2f + v * 0.4f;
-                        pos += shine * 2.2f;
-                        menu_put(X, y, MM_FIRE, menu_clampf(pos, 0.0f, 7.0f));
-                    } else {
-                        float pulse = 0.85f + 0.15f * sinf(anim_t * 2.6f + (float)X * 0.35f);
-                        if (v > 0.80f && !hi) {
-                            // Embers smouldering at the foot of the ash letters
-                            float e = (v - 0.80f) / 0.20f;
-                            menu_put(X, y, MM_FIRE, (2.6f + 2.6f * e) * pulse - (lo ? 1.0f : 0.0f));
-                        } else {
-                            float pos = 4.5f - 2.6f * v;
-                            if (hi) pos = 5.3f - 0.8f * v;
-                            else if (lo) pos -= 1.5f;
-                            else if (hi2) pos += 0.5f;
-                            pos += shine * 1.6f;
-                            if (!hi && !lo && menu_hash2(X / k, y / k) < 0.035f) {
-                                menu_put(X, y, MM_FIRE, 4.0f * pulse);
-                            } else {
-                                menu_put(X, y, MM_STEEL, menu_clampf(pos, 0.0f, 5.0f));
-                            }
-                        }
-                    }
+                // Classic chrome: bright sky top, dark horizon band, warm reflected floor
+                float pos;
+                if (v < 0.46f)      pos = 5.0f - v * 5.2f;
+                else if (v < 0.54f) pos = 0.9f;
+                else                pos = 3.6f - (v - 0.54f) * 3.4f;
+                if (hi) pos += 1.1f;
+                if (lo) pos -= 1.3f;
+                float sw = (float)(x - lx0) + (float)(y - (int)oy) * 0.7f - sweep;
+                if (fabsf(sw) < 2.2f) pos += 2.0f * (1.0f - fabsf(sw) / 2.2f);
+
+                // Proximity to the eclipse heats the lower half of nearby letters
+                float dxe = fabsf((float)x - ecx) / (Hf * 2.2f);
+                float heat = menu_clampf(1.0f - dxe, 0.0f, 1.0f) * menu_clampf((v - 0.58f) / 0.42f, 0.0f, 1.0f);
+                float pulse = 0.85f + 0.15f * sinf(anim_t * 2.4f + (float)x * 0.3f);
+                if (heat * pulse > 0.42f && !hi) {
+                    menu_put(x, y, MM_FIRE, 2.4f + 3.4f * heat * pulse - (lo ? 1.0f : 0.0f));
                 } else {
-                    bool near = false;
-                    for (int dy = -1; dy <= 1 && !near; dy++)
-                        for (int dx = -1; dx <= 1 && !near; dx++)
-                            if (menu_logo_at(X + dx, y + dy)) near = true;
-                    bool shadow = menu_logo_at(X - 2, y - 2) || menu_logo_at(X - 1, y - 1)
-                               || menu_logo_at(X - 2, y - 1) || menu_logo_at(X - 1, y - 2);
-                    if (near) {
-                        menu_put(X, y, MM_STONE, 1.7f);
-                    } else if (shadow) {
-                        menu_put(X, y, MM_STONE, 0.3f);
-                    }
+                    menu_put(x, y, MM_STEEL, menu_clampf(pos, 0.0f, 5.0f));
                 }
             }
         }
 
-        // ---- aCode-style ░ block texture hugging the logo ----
-        int tr0 = logo_top_r - 2, tr1 = logo_top_r + LL.rows + 1;
-        int tc0 = lx0 - 10, tc1 = lx1 + 10;
-        for (int r = tr0; r <= tr1; r++) {
-            if (r < 0 || r >= rows || r >= box_top_r) continue;
-            for (int c = tc0; c <= tc1; c++) {
+        // ---- ACiD-style ░ ash texture drifting around the logo ----
+        for (int r = logo_top_r; r < sub_r; r++) {
+            for (int c = lx0 - 8; c <= lx1 + 8; c++) {
                 if (c < 0 || c >= cols) continue;
                 float dx = (c < lx0) ? (float)(lx0 - c) : ((c > lx1) ? (float)(c - lx1) : 0.0f);
-                float dy = (r < logo_top_r) ? (float)(logo_top_r - r) : ((r > logo_top_r + LL.rows - 1) ? (float)(r - (logo_top_r + LL.rows - 1)) : 0.0f);
-                float d = dx * 0.18f + dy * 0.55f;
+                float n = menu_fbm2((float)c * 0.11f + anim_t * 0.15f, (float)r * 0.35f);
                 float h = menu_hash2(c / 2 + 300, r + 77);
-                if (h > 0.30f + d * 0.55f) {
-                    s_menu_tex[r][c] = (h > 0.88f - d * 0.1f && d < 0.6f) ? 2.0f : 1.0f;
-                }
+                if (n > 0.64f + dx * 0.04f && h > 0.55f) s_menu_tex[r][c] = (n > 0.74f) ? 2.0f : 1.0f;
             }
         }
 
-        // Embers drifting up out of the molten letters
-        int span = ashen_x1 - lx0 + 1;
-        for (int i = 0; i < 18 && span > 0; i++) {
+        // Embers drifting up from the eclipse
+        for (int i = 0; i < 22; i++) {
             float sx = menu_hash2(i * 17 + 5, 401);
             float st = menu_hash2(i * 29 + 3, 503);
-            float sp = 0.14f + 0.16f * menu_hash2(i * 43 + 9, 607);
+            float sp = 0.12f + 0.14f * menu_hash2(i * 43 + 9, 607);
             float life = fmodf(anim_t * sp + st, 1.0f);
-            int ex = lx0 + (int)(sx * (float)span) + (int)lroundf(sinf(anim_t * 1.9f + st * 21.0f) * 2.0f * life);
-            int ey = ly0 - 1 - (int)(life * (float)(ly0 + 2));
-            if (menu_mat_at(ex, ey) != MM_NONE || menu_logo_at(ex, ey)) continue;
+            float ex = ecx + (sx - 0.5f) * r_out * 2.0f + (sx - 0.5f) * life * (float)LL.width * 0.6f
+                     + sinf(anim_t * 1.9f + st * 21.0f) * 2.0f * life;
+            float ey = cy - life * (cy + 2.0f);
+            int ix = (int)floorf(ex), iy = (int)floorf(ey);
+            if (menu_mat_at(ix, iy) != MM_NONE) continue;
             float fade = 1.0f - life;
-            if (fade > 0.12f) menu_put(ex, ey, MM_FIRE, 3.0f + 4.0f * fade);
+            if (fade > 0.12f) menu_put(ix, iy, MM_FIRE, 3.0f + 4.0f * fade);
         }
     }
 
     // Sparse embers across the rest of the screen
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < 14; i++) {
         float sx = menu_hash2(i * 19 + 3, 101);
         float st = menu_hash2(i * 23 + 7, 211);
         float sp = 0.04f + 0.05f * menu_hash2(i * 31 + 11, 307);
@@ -7000,6 +7090,7 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         int ix = (int)floorf(sx * (float)cols + sinf(anim_t * 1.3f + st * 18.0f) * 2.5f);
         int iy = (int)floorf((1.0f - life) * (float)ph);
         if (menu_mat_at(ix, iy) != MM_NONE) continue;
+        if (sub_r >= 0 && iy / 2 == sub_r) continue;
         float fade = sinf(life * (float)M_PI);
         if (fade > 0.25f) menu_put(ix, iy, MM_FIRE, 2.5f + 3.5f * fade);
     }
@@ -7012,7 +7103,7 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         { 0.19f, 0.69f, 0.06f, 0.56f },
         { 0.94f, 0.44f, 0.81f, 0.31f }
     };
-    static const RGB TEX_RGB[3] = { {0, 0, 0}, {62, 54, 70}, {92, 80, 96} };
+    static const RGB TEX_RGB[3] = { {0, 0, 0}, {58, 50, 64}, {86, 74, 90} };
 
     int len = 0;
     int cur_fg = -1, cur_bg = -2;
@@ -7045,9 +7136,8 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
                     cell.glyph = (uint8_t)lvl;
                     cell.fg = MENU_RAMP_FIRE[fire_idx[lvl]];
                 } else if (s_menu_tex[r][c] > 0.0f) {
-                    int t = (int)s_menu_tex[r][c];
                     cell.glyph = 1;
-                    cell.fg = TEX_RGB[t];
+                    cell.fg = TEX_RGB[(int)s_menu_tex[r][c]];
                 }
             } else if (tp->mat == MM_NONE) {
                 cell.glyph = 6; cell.fg = rb[ib];
@@ -7091,7 +7181,22 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
             while (*g) buf[len++] = *g++;
         }
     }
-    if (len + 8 < (int)buf_cap) len += snprintf(buf + len, buf_cap - (size_t)len, "\033[0m");
+
+    // ---- Subtitle: ──── H  O  U  R ──── ----
+    if (sub_r >= 0 && sub_r < rows && len + 512 < (int)buf_cap) {
+        const char *word = "H   O   U   R";
+        int wl = (int)strlen(word);
+        int total = lx1 - lx0 + 1;
+        int rule = (total - wl - 4) / 2;
+        if (rule < 2) rule = 2;
+        int c0 = lx0 + (total - (rule * 2 + wl + 4)) / 2;
+        if (c0 < 0) c0 = 0;
+        len += snprintf(buf + len, buf_cap - (size_t)len, "\033[%d;%dH\033[49m\033[38;2;110;62;36m", sub_r + 1, c0 + 1);
+        for (int i = 0; i < rule; i++) len += snprintf(buf + len, buf_cap - (size_t)len, "─");
+        len += snprintf(buf + len, buf_cap - (size_t)len, "  \033[1;38;2;226;196;150m%s\033[22m\033[38;2;110;62;36m  ", word);
+        for (int i = 0; i < rule; i++) len += snprintf(buf + len, buf_cap - (size_t)len, "─");
+        len += snprintf(buf + len, buf_cap - (size_t)len, "\033[0m");
+    }
     return len;
 }
 

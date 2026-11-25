@@ -5865,9 +5865,12 @@ static int format_frame_buffer(char *buf, int buf_cap) {
 
 static void present_frame(void) {
     static char s_present_buf[524288];
-    int len = format_frame_buffer(s_present_buf, sizeof(s_present_buf));
+    // Wrap frame in DEC Mode 2026 Synchronized Output so terminals render atomically (zero text flicker)
+    memcpy(s_present_buf, "\033[?2026h", 8);
+    int len = format_frame_buffer(s_present_buf + 8, sizeof(s_present_buf) - 16);
     if (len > 0) {
-        safe_write(STDOUT_FILENO, s_present_buf, len);
+        memcpy(s_present_buf + 8 + len, "\033[?2026l", 8);
+        safe_write(STDOUT_FILENO, s_present_buf, (size_t)(8 + len + 8));
     }
 }
 
@@ -6763,9 +6766,9 @@ static const char *MENU_NFO_HALF[MENU_NFO_PH] = {
     "..##..##...............................",
     "..#*..###..............................",
     ".##....##.#............................",
-    "..##..##...###.........................",
-    "...####......####.....#################",
-    "...##.##........##...................*#",
+    "..##..##...............................",
+    "...####................................",
+    "...##.##...............................",
     "..##...##..............................",
     ".##.....##.............................",
     ".#.......#.............................",
@@ -7250,6 +7253,8 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
 
     // ---- 5. Quantize to ANSI cells and emit ----
     static const char *GLYPHS[7] = { " ", "░", "▒", "▓", "█", "▀", "▄" };
+    int text_c0 = box_left_c + 10;
+    int text_c1 = box_left_c + MENU_NFO_W - 11;
 
     int len = 0;
     int cur_fg = -1, cur_bg = -2;
@@ -7257,6 +7262,13 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         int max_c = (r == rows - 1) ? (cols - 1) : cols;
         bool positioned = false;
         for (int c = 0; c < max_c; c++) {
+            // Skip interior text rows so menu text is never overwritten by spaces before redraw (zero flicker)
+            if (c >= text_c0 && c <= text_c1 &&
+                (r == box_top_r + 1 || (r >= box_top_r + 3 && r <= box_top_r + 9) ||
+                 r == box_top_r + 11 || r == box_top_r + 12 || r == box_top_r + 14)) {
+                positioned = false;
+                continue;
+            }
             if (len + 80 >= (int)buf_cap) break;
 
             MenuSubPx *tp = &s_menu_sub[r * 2][c];
@@ -7457,16 +7469,17 @@ static bool run_setup_menu(void) {
         if (!in_menu) break;
 
         int len = 0;
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[H");
+        // DEC Mode 2026 Synchronized Output: atomic terminal paint (zero flicker)
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[?2026h\033[H");
         len += render_menu_ansi_backdrop(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
                                          g_term_cols, g_term_rows,
                                          start_r, start_c, box_w, box_h,
                                          menu_anim_t);
 
-        // Transparent .NFO Header (centered cleanly in the spacious open top alcove)
+        // Transparent .NFO Header (padded across interior text band so no stale chars remain)
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[49m\033[1;38;2;224;228;240mS E S S I O N   S E T U P\033[0m",
-            start_r + 1, start_c + 26);
+            "\033[%d;%dH\033[49m                \033[1;38;2;224;228;240mS E S S I O N   S E T U P\033[0;49m                 \033[0m",
+            start_r + 1, start_c + 10);
 
         // Prepare values for the 7 .NFO dot-leader rows
         const char *style_str = (style == 2) ? "Bloodborne Hunter's Lamp" :
@@ -7487,7 +7500,7 @@ static bool run_setup_menu(void) {
             style_str, foc_str, sb_str, lb_str, sess_str, "", bgm_str
         };
 
-        int text_c = start_c + 12;
+        int text_c = start_c + 10;
         for (int i = 0; i < 7; i++) {
             bool act = (selected == i);
             int lbl_len = (int)strlen(NFO_LABELS[i]);
@@ -7498,7 +7511,7 @@ static bool run_setup_menu(void) {
             dot_buf[dots] = '\0';
 
             len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                "\033[%d;%dH\033[49m%s%s%s %s%s : ",
+                "\033[%d;%dH\033[49m  %s%s%s %s%s : ",
                 start_r + 3 + i, text_c,
                 act ? "\033[1;38;2;255;196;72m▸ " : "\033[38;2;122;126;144m  ",
                 act ? "\033[1;38;2;255;252;242m" : "\033[0;49m\033[38;2;174;178;194m",
@@ -7507,7 +7520,7 @@ static bool run_setup_menu(void) {
                 dot_buf);
 
             if (i == 5) {
-                // Visual ember volume bar: ▓▓▓▓▓▓░░░░ 60%
+                // Visual ember volume bar: ▓▓▓▓▓▓░░░░ 60% (padded cleanly to right edge of text band)
                 int filled = volume / 10;
                 if (act) len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[1;38;2;255;180;56m◄ ");
                 else     len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "  ");
@@ -7522,46 +7535,60 @@ static bool run_setup_menu(void) {
                 }
                 if (volume == 0) {
                     len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                        "%s Mute%s\033[0m",
+                        "%s Mute%s          \033[0m",
                         act ? "\033[1;38;2;255;238;168m" : "\033[38;2;160;164;180m",
-                        act ? " \033[1;38;2;255;180;56m►" : "");
+                        act ? " \033[1;38;2;255;180;56m►" : "  ");
                 } else {
                     len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                        "%s %3d%%%s\033[0m",
+                        "%s %3d%%%s          \033[0m",
                         act ? "\033[1;38;2;255;238;168m" : "\033[38;2;214;218;230m",
                         volume,
-                        act ? " \033[1;38;2;255;180;56m►" : "");
+                        act ? " \033[1;38;2;255;180;56m►" : "  ");
                 }
-            } else if (act) {
-                len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                    "\033[1;38;2;255;180;56m◄ \033[1;38;2;255;238;168m%s \033[1;38;2;255;180;56m►\033[0m",
-                    nfo_vals[i]);
             } else {
-                len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                    "  \033[38;2;214;218;230m%s\033[0m",
-                    nfo_vals[i]);
+                int vlen = (int)strlen(nfo_vals[i]);
+                int pad = 24 - vlen;
+                if (pad < 0) pad = 0;
+                if (act) {
+                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                        "\033[1;38;2;255;180;56m◄ \033[1;38;2;255;238;168m%s \033[1;38;2;255;180;56m►%*s\033[0m",
+                        nfo_vals[i], pad, "");
+                } else {
+                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                        "  \033[38;2;214;218;230m%s%*s\033[0m",
+                        nfo_vals[i], pad + 2, "");
+                }
             }
         }
 
-        // Contextual breathing ember CTA centered between the lower baroque scrolls
+        // Contextual breathing ember CTA centered cleanly inside the interior text band
         const char *cta_str = (style == 2) ? "[  ENTER · AWAKEN THE LAMP  ]" :
                              ((style == 1) ? "[  ENTER · KINDLE THE FLAME  ]" :
                                              "[  ENTER · LIGHT THE HEARTH  ]");
         int cta_vis_len = (int)strlen(cta_str) - 1; // '·' is 2 UTF-8 bytes, 1 display col
-        int cta_c = start_c + (box_w - cta_vis_len) / 2;
+        int cta_pad_l = (58 - cta_vis_len) / 2;
+        if (cta_pad_l < 0) cta_pad_l = 0;
+        int cta_pad_r = 58 - cta_vis_len - cta_pad_l;
+        if (cta_pad_r < 0) cta_pad_r = 0;
         float pulse = 0.5f + 0.5f * sinf(menu_anim_t * 3.2f);
         int cr = 235 + (int)(20.0f * pulse);
         int cg = 152 + (int)(62.0f * pulse);
         int cb = 52  + (int)(48.0f * pulse);
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[49m\033[1;38;2;%d;%d;%dm%s\033[0m",
-            start_r + 11, cta_c, cr, cg, cb, cta_str);
+            "\033[%d;%dH\033[49m%*s\033[1;38;2;%d;%d;%dm%s\033[0;49m%*s\033[0m",
+            start_r + 11, start_c + 10, cta_pad_l, "", cr, cg, cb, cta_str, cta_pad_r, "");
 
-        // Understated 1-line controls legend centered cleanly at the bottom
+        // Slender curved bottom arc divider with glowing ember diamond (replaces blocky bar)
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[49m\033[38;2;138;142;160m↑↓\033[38;2;96;100;116m nav · \033[38;2;138;142;160m←→\033[38;2;96;100;116m adjust · \033[38;2;138;142;160m1-7\033[38;2;96;100;116m jump · \033[38;2;138;142;160mq\033[38;2;96;100;116m exit\033[0m",
-            start_r + 14, start_c + 20);
+            "\033[%d;%dH\033[49m  \033[38;2;78;72;76m╰───────────\033[38;2;126;116;118m─────\033[38;2;186;112;46m══─── \033[1;38;2;%d;%d;%dm◆\033[0;49m\033[38;2;186;112;46m ───══\033[38;2;126;116;118m─────\033[38;2;78;72;76m───────────╯  \033[0m",
+            start_r + 12, start_c + 10, cr, cg, cb);
 
+        // Understated 1-line controls legend centered cleanly below the arc
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+            "\033[%d;%dH\033[49m          \033[38;2;138;142;160m↑↓\033[38;2;96;100;116m nav · \033[38;2;138;142;160m←→\033[38;2;96;100;116m adjust · \033[38;2;138;142;160m1-7\033[38;2;96;100;116m jump · \033[38;2;138;142;160mq\033[38;2;96;100;116m exit          \033[0m",
+            start_r + 14, start_c + 10);
+
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[?2026l");
         safe_write(STDOUT_FILENO, s_menu_buf, len);
         menu_anim_t += 0.025f;
         nanosleep(&ts, NULL);

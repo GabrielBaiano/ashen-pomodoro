@@ -6833,71 +6833,126 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         int lx0 = (cols / 2) - MENU_LOGO_H_CENTER;
         int ly0 = logo_top_r * 2;
 
-        // ---- 1. Raised Darksign Eclipse centered strictly on 'H' and page center ----
+        // ---- 1. True Circular DS3 Darksign Eclipse centered strictly on 'H' ----
         float ecx = (float)lx0 + (float)MENU_LOGO_H_CENTER;
-        float ecy = (float)ly0 + 9.4f;
-        float rx = 11.4f;
-        float ry = 8.2f;
+        float r_void = 7.75f;  // Exact 4-way mirror-symmetric pixel circle (4-8-10-12-14-14-16-16)
+        float r_ring = 8.75f;  // Razor-thin 1.0px incandescent white-gold ring
+        float r_rim  = 9.72f;  // Concentric 4px-capped molten orange-crimson outer contour (zero top bump)
+        float ecy = (float)ly0 + 4.0f;
+        // On ultra-short terminals (rows < 36), nudge ecy softly so top arc is never flat-clipped
+        if (ecy < r_rim + 0.28f) ecy = floorf(r_rim + 0.5f);
 
-        int ey0 = (ly0 > 0) ? ly0 : 0;
+        int ey0 = (int)floorf(ecy - r_rim - 2.0f);
+        if (ey0 < 0) ey0 = 0;
         int ey1 = (ly0 + 26 < ph) ? (ly0 + 26) : ph;
-        int ex0 = ((int)ecx - 21 > 0) ? ((int)ecx - 21) : 0;
-        int ex1 = ((int)ecx + 22 < cols) ? ((int)ecx + 22) : cols;
+        int ex0 = ((int)ecx - 22 > 0) ? ((int)ecx - 22) : 0;
+        int ex1 = ((int)ecx + 23 < cols) ? ((int)ecx + 23) : cols;
 
         for (int y = ey0; y < ey1; y++) {
             for (int x = ex0; x < ex1; x++) {
                 float dx = ((float)x + 0.5f) - ecx;
                 float dy = ((float)y + 0.5f) - ecy;
-                float rn = sqrtf((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry));
-                if (rn < 0.72f) {
-                    menu_put(x, y, MM_VOID, (rn > 0.62f) ? 1.0f : 0.0f);
-                } else if (rn < 1.00f) {
-                    float n = menu_vnoise2(dx * 0.65f + anim_t * 1.3f, dy * 0.65f);
-                    float t = (rn - 0.72f) / 0.28f;
-                    float dim_bot = (dy > 6.5f) ? 0.85f : 0.0f;
-                    menu_put(x, y, MM_FIRE, menu_clampf(7.2f - 3.0f * t - dim_bot + (n - 0.5f) * 0.75f, 0.5f, 7.0f));
-                } else if (rn < 1.30f) {
-                    float r_e = sqrtf(dx * dx + dy * dy) + 1e-4f;
-                    float ux = dx / r_e, uy = dy / r_e;
-                    float n = menu_fbm2(ux * 2.4f + 10.0f, uy * 2.4f + 10.0f - anim_t * 0.9f);
-                    float n2 = menu_vnoise2(rn * 5.2f - anim_t * 3.0f, (ux + uy) * 3.0f + 40.0f);
-                    float reach = (0.06f + 0.20f * n * n) * (1.0f + 0.14f * fmaxf(0.0f, -uy));
-                    float f = 1.0f - (rn - 1.00f) / fmaxf(0.04f, reach) + (n2 - 0.5f) * 0.34f;
-                    if (f > 0.0f) {
-                        menu_put(x, y, MM_FIRE, menu_clampf(0.6f + f * 4.3f, 0.0f, 5.8f));
+                float dist = sqrtf(dx * dx + dy * dy);
+
+                if (dist < r_void) {
+                    // Pitch-black spherical void with whisper-thin ember rim right inside the ring
+                    float inner_warm = (dist > r_void - 0.72f) ? 1.0f : 0.0f;
+                    menu_put(x, y, MM_VOID, inner_warm);
+                } else if (dist < r_ring) {
+                    // Razor-thin blazing white-gold Darksign ring (pure circular geometry)
+                    float t = (dist - r_void) / (r_ring - r_void);
+                    float n = menu_vnoise2(dx * 0.55f + anim_t * 1.2f, dy * 0.55f - anim_t * 0.6f);
+                    // Slightly hotter at the bottom pole where the molten bleed gathers
+                    float pole_boost = (dy > 0.0f && fabsf(dx) < 3.0f) ? 0.35f : 0.0f;
+                    float p = 6.95f - 1.55f * t + pole_boost + (n - 0.5f) * 0.40f;
+                    menu_put(x, y, MM_FIRE, menu_clampf(p, 4.6f, 7.0f));
+                } else if (dist < r_rim) {
+                    // Crisp molten orange -> deep fiery crimson outer rim hugging the thin ring
+                    float t = (dist - r_ring) / (r_rim - r_ring);
+                    float n = menu_vnoise2(dx * 0.60f - anim_t * 1.0f, dy * 0.60f);
+                    float p = 4.10f - 2.35f * t + (n - 0.5f) * 0.45f;
+                    menu_put(x, y, MM_FIRE, menu_clampf(p, 1.3f, 4.5f));
+                }
+            }
+        }
+
+        // Slender luminous DS3 molten bleed filament pouring straight down through 'H'
+        float d_start_f = ecy + r_void - 0.15f;
+        int d_start = (int)floorf(d_start_f);
+        int d_end = (ly0 + 25 < ph) ? (ly0 + 25) : ph;
+        for (int y = d_start; y < d_end; y++) {
+            float dy_pole = ((float)y + 0.5f) - (ecy + r_ring);
+            float t = menu_clampf(((float)y - d_start_f) / fmaxf(1.0f, (float)(d_end - 1) - d_start_f), 0.0f, 1.0f);
+            // Graceful teardrop meniscus at the bottom pole, focusing into a slender 2px luminous filament
+            float funnel = (dy_pole < 3.0f) ? 1.45f * expf(-fmaxf(0.0f, dy_pole + 0.5f) * 0.68f) : 0.0f;
+            float w = 0.85f + funnel;
+            float shimmer = menu_vnoise2((float)y * 0.45f - anim_t * 2.8f, 13.7f);
+            for (int x = (int)ecx - 4; x <= (int)ecx + 4; x++) {
+                float dx = ((float)x + 0.5f) - ecx;
+                float dd = fabsf(dx);
+                // Preserve the inner black sphere except at the bottom meniscus rim
+                float r_here = sqrtf(dx * dx + (((float)y + 0.5f) - ecy) * (((float)y + 0.5f) - ecy));
+                if (r_here < r_void - 0.10f) continue;
+                if (dd <= w) {
+                    // Center two columns sit at dd = 0.5; measure radial falloff from that bright core
+                    float edge_d = fmaxf(0.0f, dd - 0.50f);
+                    float core = 1.0f - edge_d / fmaxf(0.35f, w - 0.40f);
+                    float neck_heat = (dy_pole < 2.8f) ? 1.15f * (1.0f - fmaxf(0.0f, dy_pole) / 2.8f) : 0.0f;
+                    float p = 1.85f + core * 3.85f + neck_heat - 1.95f * t + (shimmer - 0.5f) * 0.45f;
+                    // Smooth glowing ember fade right above the setup box border
+                    if (y >= d_end - 2) p -= 0.70f * (float)(y - (d_end - 3));
+                    if (menu_mat_at(x, y) != MM_FIRE || s_menu_sub[y][x].pos < p) {
+                        menu_put(x, y, MM_FIRE, menu_clampf(p, 1.1f, 6.8f));
                     }
                 }
             }
         }
 
-        // Tapered molten ember drip pouring cleanly between the legs of 'H'
-        int d_start = (int)(ecy + ry * 0.86f);
-        int d_end = (ly0 + 24 < ph) ? (ly0 + 24) : ph;
-        for (int y = d_start; y < d_end; y++) {
-            float t = (float)(y - d_start) / fmaxf(1.0f, (float)(d_end - d_start));
-            float sway = sinf((float)y * 0.65f - anim_t * 3.0f) * 0.40f * t;
-            float w = 1.9f * (1.0f - 0.78f * t) + 0.30f;
-            for (int x = (int)ecx - 4; x <= (int)ecx + 4; x++) {
-                float dd = fabsf(((float)x + 0.5f) - (ecx + sway));
-                if (dd <= w) {
-                    float core = 1.0f - dd / (w + 0.01f);
-                    menu_put(x, y, MM_FIRE, menu_clampf(1.8f + core * 3.6f - 1.6f * t, 0.6f, 5.6f));
+        // Sleek circular crimson-amber atmospheric corona + DS3 equatorial smoky wisps
+        int glow_r0 = (int)floorf((ecy - r_rim - 5.0f) * 0.5f);
+        if (glow_r0 < 0) glow_r0 = 0;
+        int glow_r1 = logo_top_r + MENU_LOGO_HEAD_ROWS;
+        if (glow_r1 > rows) glow_r1 = rows;
+        int glow_c0 = ((int)ecx - 24 > 0) ? ((int)ecx - 24) : 0;
+        int glow_c1 = ((int)ecx + 24 < cols) ? ((int)ecx + 24) : (cols - 1);
+        for (int r = glow_r0; r < glow_r1; r++) {
+            for (int c = glow_c0; c <= glow_c1; c++) {
+                float dx = ((float)c + 0.5f) - ecx;
+                float dy = ((float)(r * 2 + 1)) - ecy;
+                float dist = sqrtf(dx * dx + dy * dy);
+                float g = 0.0f;
+
+                if (dist > r_void) {
+                    // Tight, perfectly circular radial aura around the ring (never a tall top tower)
+                    float dr = fmaxf(0.0f, dist - (r_rim - 0.45f));
+                    float rad_sigma = 2.05f;
+                    g = 0.52f * expf(-(dr * dr) / (2.0f * rad_sigma * rad_sigma));
+
+                    // Organic DS3 smoky-fire wings flaring gently off the left & right equator
+                    float eq_y = (dy - 0.5f) / 2.9f;
+                    float eq_band = expf(-(eq_y * eq_y));
+                    if (eq_band > 0.08f && fabsf(dx) > r_ring * 0.85f) {
+                        float wing_d = fmaxf(0.0f, fabsf(dx) - r_rim) / 5.4f;
+                        float wn = menu_fbm2(dx * 0.24f + 11.0f, dy * 0.30f - anim_t * 0.35f);
+                        float wisp = 0.36f * eq_band * expf(-(wing_d * wing_d)) * (0.45f + 0.95f * wn);
+                        if (wisp > g) g = wisp;
+                    }
                 }
+
+                // Subtle crimson mist hugging the slender vertical molten bleed stream
+                if (dy > r_ring - 1.0f && (r * 2) < d_end) {
+                    float beam_t = menu_clampf((dy - r_ring) / fmaxf(1.0f, (float)d_end - (ecy + r_ring)), 0.0f, 1.0f);
+                    float bg = 0.38f * (1.0f - 0.50f * beam_t) * expf(-(dx * dx) / (2.0f * 1.85f * 1.85f));
+                    if (bg > g) g = bg;
+                }
+
+                if (g > 0.01f) menu_glow_add(c, r, rows, g);
             }
         }
 
-        // Tight transparent fiery corona hugging ONLY the eclipse ring
-        for (int r = logo_top_r; r < logo_top_r + MENU_LOGO_HEAD_ROWS && r < rows; r++) {
-            for (int c = (int)ecx - 21; c <= (int)ecx + 21; c++) {
-                float dx = (((float)c + 0.5f) - ecx) / rx;
-                float dy = ((float)(r * 2 + 1) - ecy) / ry;
-                float rn = sqrtf(dx * dx + dy * dy);
-                if (rn > 0.92f) {
-                    float d = fmaxf(0.0f, rn - 1.02f) / 0.36f;
-                    menu_glow_add(c, r, rows, 0.32f * expf(-(d * d)));
-                }
-            }
-        }
+        // Keep rx/ry aliases equal to r_ring for warm-steel reflection & extrusion shading below
+        float rx = r_ring;
+        float ry = r_ring;
 
         // ---- 2. Pitch-Black Contour Outline + Tight Clean 3D Extrusion ----
         for (int ay = -1; ay <= MENU_LOGO_PH; ay++) {
@@ -6978,28 +7033,25 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
             }
         }
 
-        // ---- 4. Sparse rising embers around the Darksign ----
-        for (int i = 0; i < 8; i++) {
+        // ---- 4. Sparse rising embers drifting in open sky above the Darksign ----
+        for (int i = 0; i < 6; i++) {
             float sx = menu_hash2(i * 17 + 5, 401);
             float st = menu_hash2(i * 29 + 3, 503);
             float sp = 0.14f + 0.14f * menu_hash2(i * 43 + 9, 607);
             float life = fmodf(anim_t * sp + st, 1.0f);
-            int ex = (int)floorf(ecx + (sx - 0.5f) * 44.0f + sinf(anim_t * 1.7f + st * 21.0f) * 1.6f);
-            int ey = (int)floorf((float)(ly0 + 24) - life * 24.0f);
+            int ex = (int)floorf(ecx + (sx - 0.5f) * 34.0f + sinf(anim_t * 1.5f + st * 21.0f) * 1.4f);
+            int ey = (int)floorf((ecy + 1.0f) - life * 13.0f);
+            if (ey >= ly0 + 5) continue;
             if (menu_mat_at(ex, ey) != MM_NONE) continue;
+            if (menu_mat_at(ex - 1, ey) != MM_NONE || menu_mat_at(ex + 1, ey) != MM_NONE ||
+                menu_mat_at(ex, ey - 1) != MM_NONE || menu_mat_at(ex, ey + 1) != MM_NONE) continue;
             float fade = sinf(life * (float)M_PI);
-            if (fade > 0.48f) menu_put(ex, ey, MM_FIRE, 4.2f + 2.8f * fade);
+            if (fade > 0.52f) menu_put(ex, ey, MM_FIRE, 2.8f + 2.2f * fade);
         }
     }
 
     // ---- 5. Quantize to ANSI cells and emit ----
     static const char *GLYPHS[7] = { " ", "░", "▒", "▓", "█", "▀", "▄" };
-    static const float BAYER4[4][4] = {
-        { 0.03f, 0.53f, 0.16f, 0.66f },
-        { 0.78f, 0.28f, 0.91f, 0.41f },
-        { 0.19f, 0.69f, 0.06f, 0.56f },
-        { 0.94f, 0.44f, 0.81f, 0.31f }
-    };
 
     int len = 0;
     int cur_fg = -1, cur_bg = -2;
@@ -7025,18 +7077,21 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
 
             if (tp->mat == MM_NONE && bp->mat == MM_NONE) {
                 float g = menu_clampf(s_menu_glow[r][c], 0.0f, 1.0f);
-                int lvl = (int)floorf(g * 3.0f + BAYER4[r & 3][c & 3]);
-                if (lvl > 3) lvl = 3;
-                if (lvl > 0 && g >= 0.06f) {
-                    static const int fire_idx[4] = { 0, 2, 3, 5 };
-                    cell.glyph = (uint8_t)lvl;
-                    cell.fg = MENU_RAMP_FIRE[fire_idx[lvl]];
+                if (g >= 0.13f) {
+                    // Smooth radial transparent halo (zero Bayer square-column artifacts)
+                    uint8_t lvl = (g >= 0.56f) ? 3 : ((g >= 0.30f) ? 2 : 1);
+                    float u = menu_clampf((g - 0.13f) / 0.55f, 0.0f, 1.0f);
+                    cell.glyph = lvl;
+                    cell.fg.r = (uint8_t)(88.0f  + 142.0f * u);
+                    cell.fg.g = (uint8_t)(13.0f  + 60.0f  * u * u);
+                    cell.fg.b = (uint8_t)(10.0f  + 8.0f   * u);
                 }
             } else if (tp->mat == MM_NONE) {
                 cell.glyph = 6; cell.fg = rb[ib];
             } else if (bp->mat == MM_NONE) {
                 cell.glyph = 5; cell.fg = rt[it];
-            } else if (tp->mat == bp->mat && fabsf(tp->pos - bp->pos) <= 1.25f) {
+            } else if (tp->mat == bp->mat &&
+                       ((tp->mat == MM_FIRE) ? (it == ib) : (fabsf(tp->pos - bp->pos) <= 1.25f))) {
                 float p = menu_clampf((tp->pos + bp->pos) * 0.5f, 0.0f, (float)(nt - 1));
                 int a = (int)floorf(p);
                 float t = p - (float)a;

@@ -6645,21 +6645,23 @@ static void sync_volume_config(void) {
 }
 
 /* ============================================================================
- * "ASHEN" Heavy-Metal / Dark Souls ANSI Emblem for the Setup Menu
+ * "ASHEN" Swept-Wing Heavy-Metal / Dark Souls ANSI Emblem for the Setup Menu
  *
- * Hand-sculpted 66x24 interlocking metal lettering with a Darksign eclipse
- * crowning the central gothic 'H'. Uses half-blocks (▀▄█) for crisp contours,
- * palette-ramp CP437 dithering (░▒▓) for liquid chrome & fire shading, crimson
- * 3D depth extrusion, and \033[49m transparency for transparent terminals.
+ * 98x30 sculpted metal lettering anchored strictly on the central gothic 'H'
+ * (col 49 = page center) with the Darksign eclipse rising above it. Outer A/N
+ * concave sword-blades drape gracefully past the upper corners of the setup
+ * box. Uses half-blocks (▀▄█) for crisp contours, clean brushed forged-steel
+ * CP437 dithering (░▒▓), and \033[49m transparency for transparent terminals.
  * ============================================================================ */
 
 #define MENU_MAX_COLS 260
 #define MENU_MAX_ROWS 100
-#define MENU_LOGO_W   86
-#define MENU_LOGO_PH  28
-#define MENU_LOGO_ROWS 14
+#define MENU_LOGO_W   98
+#define MENU_LOGO_PH  30
+#define MENU_LOGO_HEAD_ROWS 13
+#define MENU_LOGO_H_CENTER  49
 
-enum { MM_NONE = 0, MM_CHROME, MM_FIRE, MM_VOID, MM_EXTRUDE };
+enum { MM_NONE = 0, MM_CHROME, MM_FIRE, MM_VOID, MM_EXTRUDE, MM_WARM_STEEL };
 
 typedef struct {
     uint8_t mat;
@@ -6675,13 +6677,17 @@ typedef struct {
 typedef struct {
     int scale;   // 1 = visible, 0 = hidden (terminal too small)
     int width;
-    int rows;
+    int rows;    // rows occupied above the menu box
     int gap;
 } MenuLogoLayout;
 
-static const RGB MENU_RAMP_CHROME[6] = {
-    {8, 6, 12}, {32, 30, 42}, {70, 68, 86},
-    {128, 128, 148}, {200, 202, 218}, {255, 255, 255}
+static const RGB MENU_RAMP_CHROME[7] = {
+    {12, 11, 18}, {42, 42, 54}, {78, 80, 96}, {122, 126, 144},
+    {174, 178, 194}, {224, 228, 240}, {255, 255, 255}
+};
+static const RGB MENU_RAMP_WARM_STEEL[5] = {
+    {46, 22, 16}, {102, 46, 22}, {168, 84, 30},
+    {224, 140, 52}, {252, 206, 118}
 };
 static const RGB MENU_RAMP_FIRE[8] = {
     {26, 5, 6}, {86, 12, 10}, {158, 24, 12}, {224, 60, 14},
@@ -6689,46 +6695,49 @@ static const RGB MENU_RAMP_FIRE[8] = {
 };
 static const RGB MENU_RAMP_VOID[2] = { {5, 3, 7}, {48, 10, 12} };
 static const RGB MENU_RAMP_EXTRUDE[4] = {
-    {18, 4, 8}, {52, 10, 14}, {102, 18, 16}, {154, 32, 18}
+    {18, 6, 10}, {48, 12, 16}, {88, 20, 20}, {128, 30, 22}
 };
 
 static const char *MENU_ASHEN_ART[MENU_LOGO_PH] = {
-    "......................................................................................",
-    "......................................................................................",
-    "......................................................................................",
-    "......................................................................................",
-    "......................................................................................",
-    "..................+++...............++..............++.............................+..",
-    "..................+##++..............++............+#............................++...",
-    ".................+#####+.....+++.....##++........++##..+++++++.....++...........+##...",
-    "................+#######..+++###+++...+##+......+###...+######++++.+#+.........+##....",
-    "...............+###.+##...+########+..+###+....+####...+##########.+##+........+#.....",
-    "...............+##..+##...+#.......+..+##........+##...+#.......#..+###.......+##.....",
-    "..............+##...+##...+#+......#..###........+##..+##..........+###+.....+##......",
-    ".............+###...+##...###+.........+#+......+##...+##..........+####+....+##......",
-    "............+###....+##....###++.......+##......+##...+##..........+#.###+...+##......",
-    "...........+###.....+##.....####+......+##++++++###...+##++++++....+#..###...+##......",
-    "..........+####+++++###.......###++....+###########...+#######.....+#...+#+.+###......",
-    ".........+#############.........###....+##......+##...+##.........+##...###+.+##......",
-    "........+#####.......+#..........+#+...+##......###...+##.........+#.....###+###......",
-    ".......+######.......+#..+.......+##...+#........+#...+##.........+#......+#####......",
-    "......+##.+##........+#..+.......+##..+##........+#+..+#..........+#......######+.....",
-    ".....+###+##.........##..#+++..++###..+##........###..+#..........+#.......######.....",
-    "....+#####............++..###++####...+#..........+#..+#++++++++..+#........+####+....",
-    "...+#####.............+#....#####.....+#..........##.+########....+.........######+...",
-    "..+####...............##.............+#............++.##..........+..........######+..",
-    ".+##...................#.............##............##.............#.............####+.",
-    "......................................................................................",
-    "......................................................................................",
-    "......................................................................................"
+    "..................................................................................................",
+    "..................................................................................................",
+    "..................................................................................................",
+    "..................................................................................................",
+    "..................................................................................................",
+    "......................######.............##............##...............................#.........",
+    "........................######............##..........##..............................##..........",
+    "........................######.....#......###........###...#########.##..............##...........",
+    ".......................######...########..####......####...#########.###............##............",
+    "......................#######..##########.#####....#####...###.....#.####..........###............",
+    "......................###.###..###......#..##........##....##........#####........###.............",
+    ".....................###..###..###......#..###......###....##........######.......###.............",
+    "....................####..###...###........###......###...###........##.####.....###..............",
+    "...................####...###...#####......###......###...###....#...##..###.....###..............",
+    "..................####.....##....#####.....############...########...##...###...###...............",
+    "................#############......#####...############...#####......##...####..###...............",
+    "................#############........###...###......###...###........##....####.###...............",
+    "................###........##.........###..###......###...##........##......#######...............",
+    "...............###.........##..#......###..###......###..###........##.......#######..............",
+    "..............###..........##..#.......##..##........##..###........##........######..............",
+    "............####............##.###..#####..##........##..###...####.##.........######.............",
+    "...........###..............##.#########...##........##..#########..##..........######............",
+    "..........###...............##....####....##..........##.######.....#............#####............",
+    ".........###................##............##..........##.##.........#...............###...........",
+    "........##................................#............#.............................###..........",
+    "......###..............................................................................##.........",
+    ".....##.................................................................................##........",
+    "....#.....................................................................................#.......",
+    "..................................................................................................",
+    ".................................................................................................."
 };
 
 static const RGB *menu_ramp(int mat, int *n) {
     switch (mat) {
-        case MM_CHROME:  *n = 6; return MENU_RAMP_CHROME;
-        case MM_FIRE:    *n = 8; return MENU_RAMP_FIRE;
-        case MM_EXTRUDE: *n = 4; return MENU_RAMP_EXTRUDE;
-        default:         *n = 2; return MENU_RAMP_VOID;
+        case MM_CHROME:     *n = 7; return MENU_RAMP_CHROME;
+        case MM_WARM_STEEL: *n = 5; return MENU_RAMP_WARM_STEEL;
+        case MM_FIRE:       *n = 8; return MENU_RAMP_FIRE;
+        case MM_EXTRUDE:    *n = 4; return MENU_RAMP_EXTRUDE;
+        default:            *n = 2; return MENU_RAMP_VOID;
     }
 }
 
@@ -6780,23 +6789,19 @@ static inline void menu_glow_add(int c, int r, int rows, float v) {
     s_menu_glow[r][c] += v;
 }
 
-static inline char menu_art_ch(int ax, int ay) {
-    if (ax < 0 || ax >= MENU_LOGO_W || ay < 0 || ay >= MENU_LOGO_PH) return '.';
-    return MENU_ASHEN_ART[ay][ax];
-}
-
 static inline bool menu_art_solid(int ax, int ay) {
-    return menu_art_ch(ax, ay) != '.';
+    if (ax < 0 || ax >= MENU_LOGO_W || ay < 0 || ay >= MENU_LOGO_PH) return false;
+    return MENU_ASHEN_ART[ay][ax] != '.';
 }
 
 static MenuLogoLayout menu_logo_layout(int cols, int rows, int box_h) {
     MenuLogoLayout L;
     memset(&L, 0, sizeof(L));
-    if (cols >= 68 && rows >= MENU_LOGO_ROWS + box_h) {
+    if (cols >= 68 && rows >= MENU_LOGO_HEAD_ROWS + box_h) {
         L.scale = 1;
         L.width = MENU_LOGO_W;
-        L.rows = MENU_LOGO_ROWS;
-        L.gap = 0; // Center letters finish 2 rows above box while A/N scythes cradle the top corners
+        L.rows = MENU_LOGO_HEAD_ROWS;
+        L.gap = 0; // Center letters clear the box while outer A/N blades drape beside top corners
     }
     return L;
 }
@@ -6824,19 +6829,18 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
     int logo_top_r = box_top_r - LL.gap - LL.rows;
 
     if (LL.scale > 0 && logo_top_r >= 0) {
-        // Anchor 'H' (center at bitmap col 45) strictly to the horizontal center of the page,
-        // letting the freeform A/N blades flow asymmetrically left & right
-        int lx0 = (cols / 2) - 45;
+        // Anchor 'H' strictly to the horizontal center of the page
+        int lx0 = (cols / 2) - MENU_LOGO_H_CENTER;
         int ly0 = logo_top_r * 2;
 
         // ---- 1. Raised Darksign Eclipse centered strictly on 'H' and page center ----
-        float ecx = (float)lx0 + 45.0f;
+        float ecx = (float)lx0 + (float)MENU_LOGO_H_CENTER;
         float ecy = (float)ly0 + 9.4f;
         float rx = 12.2f;
         float ry = 8.2f;
 
         int ey0 = (ly0 > 0) ? ly0 : 0;
-        int ey1 = (ly0 + MENU_LOGO_PH < ph) ? (ly0 + MENU_LOGO_PH) : ph;
+        int ey1 = (ly0 + 26 < ph) ? (ly0 + 26) : ph;
         int ex0 = ((int)ecx - 21 > 0) ? ((int)ecx - 21) : 0;
         int ex1 = ((int)ecx + 22 < cols) ? ((int)ecx + 22) : cols;
 
@@ -6850,14 +6854,14 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
                 } else if (rn < 1.00f) {
                     float n = menu_vnoise2(dx * 0.65f + anim_t * 1.3f, dy * 0.65f);
                     float t = (rn - 0.72f) / 0.28f;
-                    float dim_bot = (dy > 6.5f) ? 0.8f : 0.0f;
+                    float dim_bot = (dy > 6.5f) ? 0.85f : 0.0f;
                     menu_put(x, y, MM_FIRE, menu_clampf(7.2f - 3.0f * t - dim_bot + (n - 0.5f) * 0.75f, 0.5f, 7.0f));
-                } else if (rn < 1.34f) {
+                } else if (rn < 1.30f) {
                     float r_e = sqrtf(dx * dx + dy * dy) + 1e-4f;
                     float ux = dx / r_e, uy = dy / r_e;
                     float n = menu_fbm2(ux * 2.4f + 10.0f, uy * 2.4f + 10.0f - anim_t * 0.9f);
                     float n2 = menu_vnoise2(rn * 5.2f - anim_t * 3.0f, (ux + uy) * 3.0f + 40.0f);
-                    float reach = (0.07f + 0.22f * n * n) * (1.0f + 0.14f * fmaxf(0.0f, -uy));
+                    float reach = (0.06f + 0.20f * n * n) * (1.0f + 0.14f * fmaxf(0.0f, -uy));
                     float f = 1.0f - (rn - 1.00f) / fmaxf(0.04f, reach) + (n2 - 0.5f) * 0.34f;
                     if (f > 0.0f) {
                         menu_put(x, y, MM_FIRE, menu_clampf(0.6f + f * 4.3f, 0.0f, 5.8f));
@@ -6866,36 +6870,36 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
             }
         }
 
-        // Organic tapered Darksign bleed flame pouring from the lower crescent
+        // Tapered molten ember drip pouring cleanly between the legs of 'H'
         int d_start = (int)(ecy + ry * 0.86f);
-        int d_end = (ly0 + 25 < ph) ? (ly0 + 25) : ph;
+        int d_end = (ly0 + 24 < ph) ? (ly0 + 24) : ph;
         for (int y = d_start; y < d_end; y++) {
             float t = (float)(y - d_start) / fmaxf(1.0f, (float)(d_end - d_start));
-            float sway = sinf((float)y * 0.65f - anim_t * 3.0f) * 0.45f * t;
-            float w = 2.0f * (1.0f - 0.78f * t) + 0.30f;
+            float sway = sinf((float)y * 0.65f - anim_t * 3.0f) * 0.40f * t;
+            float w = 1.9f * (1.0f - 0.78f * t) + 0.30f;
             for (int x = (int)ecx - 4; x <= (int)ecx + 4; x++) {
                 float dd = fabsf(((float)x + 0.5f) - (ecx + sway));
                 if (dd <= w) {
                     float core = 1.0f - dd / (w + 0.01f);
-                    menu_put(x, y, MM_FIRE, menu_clampf(1.8f + core * 3.8f - 1.6f * t, 0.6f, 5.8f));
+                    menu_put(x, y, MM_FIRE, menu_clampf(1.8f + core * 3.6f - 1.6f * t, 0.6f, 5.6f));
                 }
             }
         }
 
         // Tight transparent fiery corona hugging ONLY the eclipse ring
-        for (int r = logo_top_r; r < logo_top_r + MENU_LOGO_ROWS && r < rows; r++) {
+        for (int r = logo_top_r; r < logo_top_r + MENU_LOGO_HEAD_ROWS && r < rows; r++) {
             for (int c = (int)ecx - 21; c <= (int)ecx + 21; c++) {
                 float dx = (((float)c + 0.5f) - ecx) / rx;
                 float dy = ((float)(r * 2 + 1) - ecy) / ry;
                 float rn = sqrtf(dx * dx + dy * dy);
                 if (rn > 0.92f) {
-                    float d = fmaxf(0.0f, rn - 1.02f) / 0.38f;
-                    menu_glow_add(c, r, rows, 0.34f * expf(-(d * d)));
+                    float d = fmaxf(0.0f, rn - 1.02f) / 0.36f;
+                    menu_glow_add(c, r, rows, 0.32f * expf(-(d * d)));
                 }
             }
         }
 
-        // ---- 2. Pitch-Black Contour Outline + Tight Crimson 3D Extrusion ----
+        // ---- 2. Pitch-Black Contour Outline + Tight Clean 3D Extrusion ----
         for (int ay = -1; ay <= MENU_LOGO_PH; ay++) {
             for (int ax = -1; ax <= MENU_LOGO_W; ax++) {
                 int x = lx0 + ax, y = ly0 + ay;
@@ -6911,79 +6915,80 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
                 if (near) {
                     menu_put(x, y, MM_VOID, 0.0f);
                 } else {
-                    bool ext = menu_art_solid(ax - 2, ay - 2) || menu_art_solid(ax - 1, ay - 2);
+                    bool ext = menu_art_solid(ax - 1, ay - 2) || menu_art_solid(ax - 2, ay - 1);
                     if (ext && menu_mat_at(x, y) == MM_NONE) {
                         float ddx = (((float)x + 0.5f) - ecx) / rx;
                         float ddy = (((float)y + 0.5f) - ecy) / ry;
-                        float warm = menu_clampf(1.35f - sqrtf(ddx * ddx + ddy * ddy) * 0.42f, 0.0f, 1.0f);
-                        menu_put(x, y, MM_EXTRUDE, 0.4f + 2.2f * warm);
+                        float warm = menu_clampf(1.30f - sqrtf(ddx * ddx + ddy * ddy) * 0.42f, 0.0f, 1.0f);
+                        menu_put(x, y, MM_EXTRUDE, 0.4f + 2.1f * warm);
                     }
                 }
             }
         }
 
-        // ---- 3. Liquid Heavy-Metal Chrome Shading + Fire-Caught Rim Glint ----
-        float sweep = fmodf(anim_t * 20.0f, 140.0f) - 25.0f;
+        // ---- 3. Clean Cohesive Brushed Forged-Steel Chrome Shader ----
+        float sweep = fmodf(anim_t * 20.0f, 160.0f) - 30.0f;
         for (int ay = 0; ay < MENU_LOGO_PH; ay++) {
             for (int ax = 0; ax < MENU_LOGO_W; ax++) {
-                char ch = MENU_ASHEN_ART[ay][ax];
-                if (ch == '.') continue;
+                if (!menu_art_solid(ax, ay)) continue;
                 int x = lx0 + ax, y = ly0 + ay;
                 if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
 
-                float v = menu_clampf(((float)ay - 6.0f) / 18.0f, 0.0f, 1.0f);
+                float v = menu_clampf(((float)ay - 5.0f) / 21.0f, 0.0f, 1.0f);
                 bool up    = !menu_art_solid(ax, ay - 1);
                 bool left  = !menu_art_solid(ax - 1, ay);
                 bool down  = !menu_art_solid(ax, ay + 1);
                 bool right = !menu_art_solid(ax + 1, ay);
 
-                float wave_v = menu_clampf(v + 0.065f * sinf((float)ax * 0.135f - 0.5f), 0.0f, 1.0f);
+                // Smooth metallic horizon curve across ASHEN (zero blotchy holes)
+                float wave_v = menu_clampf(v + 0.045f * sinf((float)(ax - MENU_LOGO_H_CENTER) * 0.095f), 0.0f, 1.0f);
                 float pos;
-                if (ch == '-') {
-                    pos = 0.25f;
-                } else if (ch == '+') {
-                    pos = (wave_v < 0.62f) ? 5.0f : 4.3f;
-                } else {
-                    if (wave_v < 0.36f)      pos = 4.9f - wave_v * 4.4f;
-                    else if (wave_v < 0.50f) pos = 0.85f + (wave_v - 0.36f) * 2.2f;
-                    else                     pos = 3.7f - (wave_v - 0.50f) * 3.4f;
-                    if (up || left)          pos += 1.25f;
-                    else if (down || right)  pos -= 0.90f;
+                if (wave_v < 0.40f)      pos = 5.4f - wave_v * 5.0f;
+                else if (wave_v < 0.52f) pos = 2.0f + (wave_v - 0.40f) * 4.5f;
+                else                     pos = 4.1f - (wave_v - 0.52f) * 4.6f;
+
+                // Subtle fine brushed-steel grain
+                pos += (menu_vnoise2((float)ax * 0.35f, (float)ay * 0.12f) - 0.5f) * 0.38f;
+
+                // Clean bevel rim lighting
+                if (up)                   pos += 1.05f;
+                else if (left && !down)   pos += 0.45f;
+                if (down && right)        pos -= 0.75f;
+                else if (down)            pos -= 0.45f;
+
+                // Animated specular sheen gliding across forged steel
+                float sw = ((float)ax + (float)ay * 0.65f) - sweep;
+                if (fabsf(sw) < 2.8f) {
+                    pos += 1.45f * (1.0f - fabsf(sw) / 2.8f);
                 }
 
-                float sw = ((float)ax + (float)ay * 0.7f) - sweep;
-                if (fabsf(sw) < 2.4f && ch != '-') {
-                    pos += 1.8f * (1.0f - fabsf(sw) / 2.4f);
-                }
-
-                // Warm firelight reflection ONLY on inner edges directly facing the eclipse ring
+                // Coherent warm bronze-steel reflection ONLY on edges hugging the eclipse ring
                 float dx_e = ((float)x + 0.5f) - ecx;
                 float dy_e = ((float)y + 0.5f) - ecy;
                 float rn_e = sqrtf((dx_e / rx) * (dx_e / rx) + (dy_e / ry) * (dy_e / ry));
-                float d_ring = (fabsf(rn_e - 0.92f)) / 0.32f;
+                float d_ring = fabsf(rn_e - 0.94f) / 0.26f;
                 float near_ring = expf(-(d_ring * d_ring));
-                bool edge_facing = (dx_e < -1.0f && right) || (dx_e > 1.0f && left)
-                                || (dy_e < 0.0f && down)   || (dy_e > 0.0f && up);
+                bool edge_facing = (dx_e < -2.0f && right) || (dx_e > 2.0f && left) || (dy_e < -2.0f && down);
 
-                if (ch != '-' && near_ring > 0.56f && edge_facing) {
-                    menu_put(x, y, MM_FIRE, menu_clampf(2.6f + 3.0f * near_ring, 1.5f, 6.0f));
+                if (near_ring > 0.68f && edge_facing && !up && fabsf(dx_e) <= rx + 0.8f) {
+                    menu_put(x, y, MM_WARM_STEEL, menu_clampf(1.6f + 2.2f * near_ring, 0.8f, 4.0f));
                 } else {
-                    menu_put(x, y, MM_CHROME, menu_clampf(pos, 0.0f, 5.0f));
+                    menu_put(x, y, MM_CHROME, menu_clampf(pos, 0.8f, 6.0f));
                 }
             }
         }
 
         // ---- 4. Sparse rising embers around the Darksign ----
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 8; i++) {
             float sx = menu_hash2(i * 17 + 5, 401);
             float st = menu_hash2(i * 29 + 3, 503);
             float sp = 0.14f + 0.14f * menu_hash2(i * 43 + 9, 607);
             float life = fmodf(anim_t * sp + st, 1.0f);
-            int ex = (int)floorf(ecx + (sx - 0.5f) * 48.0f + sinf(anim_t * 1.7f + st * 21.0f) * 1.8f);
-            int ey = (int)floorf((float)(ly0 + 26) - life * 26.0f);
+            int ex = (int)floorf(ecx + (sx - 0.5f) * 44.0f + sinf(anim_t * 1.7f + st * 21.0f) * 1.6f);
+            int ey = (int)floorf((float)(ly0 + 24) - life * 24.0f);
             if (menu_mat_at(ex, ey) != MM_NONE) continue;
             float fade = sinf(life * (float)M_PI);
-            if (fade > 0.45f) menu_put(ex, ey, MM_FIRE, 4.2f + 2.8f * fade);
+            if (fade > 0.48f) menu_put(ex, ey, MM_FIRE, 4.2f + 2.8f * fade);
         }
     }
 
@@ -7036,10 +7041,10 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
                 int a = (int)floorf(p);
                 float t = p - (float)a;
                 if (a >= nt - 1) { a = nt - 2; t = 1.0f; }
-                if (t < 0.125f)      { cell.glyph = 4; cell.fg = rt[a]; }
-                else if (t > 0.875f) { cell.glyph = 4; cell.fg = rt[a + 1]; }
+                if (t < 0.16f)      { cell.glyph = 4; cell.fg = rt[a]; }
+                else if (t > 0.84f) { cell.glyph = 4; cell.fg = rt[a + 1]; }
                 else {
-                    cell.glyph = (t < 0.375f) ? 1 : ((t < 0.625f) ? 2 : 3);
+                    cell.glyph = (t < 0.38f) ? 1 : ((t < 0.62f) ? 2 : 3);
                     cell.fg = rt[a + 1];
                     cell.bg = rt[a];
                     cell.has_bg = 1;

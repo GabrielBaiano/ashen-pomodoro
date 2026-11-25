@@ -6681,54 +6681,28 @@ static const char *MENU_ASHEN_ART[MENU_LOGO_PH] = {
     ".................................................................................................."
 };
 
-// Hybrid slender gothic .NFO forged-iron & burning Kiln root columns
-// ('#' = forged dark iron/root, '*' = burning ember knot, '+' = bright chrome NFO corner star)
-static const char *MENU_NFO_HALF[MENU_NFO_PH] = {
-    "....####.......###.....................",
-    "..#######.....#####....................",
-    ".###...###...##..##....................",
-    "###.....##..*#.........................",
-    ".##......####..........................",
-    "..###....##............................",
-    "...###.................................",
-    "..#*.##................................",
-    "..##.##................................",
-    "...###.................................",
-    "...###.................................",
-    "..##.##................................",
-    ".###.##................................",
-    "..#*###................................",
-    "..##.##................................",
-    "...###.................................",
-    "...###.................................",
-    "..##.##................................",
-    "..#.*#.................................",
-    "...###.................................",
-    "...##....###...........................",
-    "..###..######..........................",
-    ".#*..###...###.........................",
-    "###...##....##.........................",
-    ".###..##...............................",
-    "..####.................................",
-    "..###..................................",
-    "..##...................................",
-    ".##....+...............................",
-    ".##...+++..............................",
-    ".#...+++++.............................",
-    ".#....+++..............................",
-    ".......+...............................",
-    "......................................."
+// Authentic baroque .NFO border (17 rows x 39-col mirrored half -> 78 cols)
+// Encoded in pure ASCII for C99 portability & exact mirroring:
+// ' ' = empty, 'F' = █, 'T' = ▀, 'B' = ▄, 'W' = ▓, 'M' = ▒, 'L' = ░, 'G' = gold ember star
+static const char *MENU_NFO_BORDER_HALF[17] = {
+    "  BFFBBBB                              ",
+    "BFFTFFFTTT                             ",
+    " TFM TF  BGB                           ",
+    "  FL  FB TWF                           ",
+    " BF   TFFBT                            ",
+    " FT    LFF                             ",
+    " F     MFT                             ",
+    " TFB   FT                              ",
+    "  BFT  F                               ",
+    " BFT  BFB                              ",
+    " F   BFMFB                             ",
+    "TFBBBFFLFT                             ",
+    "BWFT  TFM                              ",
+    "TFFB   TL        B                     ",
+    "  TFFB BBBFFBB  TGT  BFFB              ",
+    " TB TFFMTTTFFFB   BFMTFFB              ",
+    "  TFBBTTFB BTTFT BFFLTTFFFFBBBB        "
 };
-
-static inline char menu_nfo_char(int ax, int ay) {
-    if (ax < 0 || ax >= MENU_NFO_W || ay < 0 || ay >= MENU_NFO_PH) return '.';
-    int mx = (ax < MENU_NFO_HALF_W) ? ax : (MENU_NFO_W - 1 - ax);
-    return MENU_NFO_HALF[ay][mx];
-}
-
-static inline bool menu_nfo_solid(int ax, int ay) {
-    return menu_nfo_char(ax, ay) != '.';
-}
 
 static const RGB *menu_ramp(int mat, int *n) {
     switch (mat) {
@@ -7070,150 +7044,10 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         }
     }
 
-    // ---- 4b. Slender Burning Kiln Roots framing the transparent Setup Menu ----
-    if (cols >= MENU_NFO_W && rows >= box_h) {
-        int nx0 = box_left_c;
-        int ny0 = box_top_r * 2;
-
-        // 1px dark contour around roots (only into empty space so ASHEN blades stay untouched)
-        for (int ay = -1; ay <= MENU_NFO_PH; ay++) {
-            for (int ax = -1; ax <= MENU_NFO_W; ax++) {
-                int x = nx0 + ax, y = ny0 + ay;
-                if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
-                if (menu_nfo_solid(ax, ay)) continue;
-
-                bool near = false;
-                for (int dy = -1; dy <= 1 && !near; dy++) {
-                    for (int dx = -1; dx <= 1 && !near; dx++) {
-                        if (menu_nfo_solid(ax + dx, ay + dy)) near = true;
-                    }
-                }
-                if (near && menu_mat_at(x, y) == MM_NONE) {
-                    menu_put(x, y, MM_VOID, 0.0f);
-                }
-            }
-        }
-
-        // Shade hybrid forged dark-steel gothic scrolls + glowing ember veins + bright chrome corner stars
-        float nfo_sweep = fmodf(anim_t * 20.0f, 160.0f) - 30.0f;
-        for (int ay = 0; ay < MENU_NFO_PH; ay++) {
-            for (int ax = 0; ax < MENU_NFO_W; ax++) {
-                char mc = menu_nfo_char(ax, ay);
-                if (mc == '.') continue;
-                int x = nx0 + ax, y = ny0 + ay;
-                if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
-
-                if (mc == '+') {
-                    // Gleaming chrome 4-point .NFO corner star
-                    bool core = (menu_nfo_char(ax - 1, ay) == '+' && menu_nfo_char(ax + 1, ay) == '+') ||
-                                (menu_nfo_char(ax, ay - 1) == '+' && menu_nfo_char(ax, ay + 1) == '+');
-                    menu_put(x, y, MM_CHROME, core ? 6.0f : 4.6f);
-                    continue;
-                }
-
-                // Measure proximity to nearest burning ember knot '*'
-                float min_knot = 9.0f;
-                for (int dy = -3; dy <= 3; dy++) {
-                    for (int dx = -3; dx <= 3; dx++) {
-                        if (menu_nfo_char(ax + dx, ay + dy) == '*') {
-                            float d = sqrtf((float)(dx * dx + dy * dy));
-                            if (d < min_knot) min_knot = d;
-                        }
-                    }
-                }
-
-                // Independent organic flicker per side so left & right flames feel alive
-                float side_phase = (ax < MENU_NFO_HALF_W) ? 0.0f : 7.3f;
-                float n = menu_vnoise2((float)ax * 0.55f + side_phase, (float)ay * 0.45f - anim_t * 2.4f);
-                float pulse = 0.78f + 0.22f * sinf(anim_t * 3.8f + (float)ay * 0.45f + side_phase);
-
-                if (mc == '*') {
-                    menu_put(x, y, MM_FIRE, menu_clampf(5.6f + 1.2f * n * pulse, 4.4f, 6.9f));
-                } else if (min_knot < 2.05f && (min_knot < 1.30f || n > 0.44f)) {
-                    // Glowing ember fissures spreading through the dark iron/root around each burning knot
-                    float heat = (1.0f - min_knot / 2.15f) * (3.7f + 1.5f * n) * pulse;
-                    menu_put(x, y, MM_FIRE, menu_clampf(0.8f + heat, 0.8f, 5.3f));
-                } else {
-                    // Forged dark-steel gothic iron (bridging ASHEN's chrome with charred Kiln texture)
-                    bool up    = !menu_nfo_solid(ax, ay - 1);
-                    bool left  = !menu_nfo_solid(ax - 1, ay);
-                    bool down  = !menu_nfo_solid(ax, ay + 1);
-                    bool right = !menu_nfo_solid(ax + 1, ay);
-                    float v = (float)ay / (float)(MENU_NFO_PH - 1);
-                    float grain = menu_vnoise2((float)ax * 0.45f, (float)ay * 0.22f);
-                    float pos = 3.25f - 0.75f * sinf(v * (float)M_PI * 2.0f) + (grain - 0.5f) * 0.55f;
-                    if (up)                 pos += 1.05f;
-                    else if (left && !down) pos += 0.40f;
-                    if (down && right)      pos -= 0.70f;
-                    else if (down)          pos -= 0.40f;
-                    // Subtle synchronized sheen gliding across the forged iron scrolls
-                    float sw = ((float)ax + (float)ay * 0.55f) - nfo_sweep;
-                    if (fabsf(sw) < 2.4f) {
-                        pos += 1.15f * (1.0f - fabsf(sw) / 2.4f);
-                    }
-                    menu_put(x, y, MM_CHROME, menu_clampf(pos, 1.0f, 5.2f));
-                }
-            }
-        }
-
-        // Animated tongues of flame licking upward from each '*' ember knot + soft transparent glow
-        for (int ay = 0; ay < MENU_NFO_PH; ay++) {
-            for (int ax = 0; ax < MENU_NFO_W; ax++) {
-                if (menu_nfo_char(ax, ay) != '*') continue;
-                int x0 = nx0 + ax, y0 = ny0 + ay;
-                float seed = (float)(ax * 13 + ay * 7) * 0.37f;
-                float flicker = 0.65f + 0.35f * sinf(anim_t * 6.2f + seed);
-                int flame_h = (ay == 26) ? 2 : (int)(2.5f + 2.2f * flicker);
-
-                for (int fy = 1; fy <= flame_h; fy++) {
-                    float t = (float)fy / (float)(flame_h + 1);
-                    float sway = sinf(anim_t * 5.0f + seed + (float)fy * 0.9f) * 0.65f * t;
-                    int fx = x0 + (int)lroundf(sway);
-                    int fyy = y0 - fy;
-                    if (fx < 0 || fx >= cols || fyy < 0 || fyy >= ph) continue;
-                    // Never overwrite text safe zone (cols nx0+10 .. nx0+MENU_NFO_W-11) except center knot
-                    if (ay != 26 && fx >= nx0 + 10 && fx <= nx0 + MENU_NFO_W - 11) continue;
-                    uint8_t cur = menu_mat_at(fx, fyy);
-                    if (cur == MM_NONE || cur == MM_VOID) {
-                        float fp = 5.4f * (1.0f - t) + 1.2f * flicker;
-                        menu_put(fx, fyy, MM_FIRE, menu_clampf(fp, 1.2f, 6.2f));
-                    }
-                }
-
-                // Soft atmospheric crimson glow hugging each burning root knot
-                int kr = y0 / 2;
-                for (int dr = -1; dr <= 1; dr++) {
-                    for (int dc = -2; dc <= 2; dc++) {
-                        int gc = x0 + dc, gr = kr + dr;
-                        if (ay != 26 && gc >= nx0 + 10 && gc <= nx0 + MENU_NFO_W - 11) continue;
-                        float d2 = (float)(dc * dc) * 0.55f + (float)(dr * dr) * 1.4f;
-                        float g = (0.34f * flicker) * expf(-d2 * 0.65f);
-                        if (g > 0.05f) menu_glow_add(gc, gr, rows, g);
-                    }
-                }
-            }
-        }
-
-        // Delicate rising embers drifting off the two burning root columns
-        for (int i = 0; i < 6; i++) {
-            bool right_side = (i & 1) != 0;
-            float st = menu_hash2(i * 31 + 11, 709);
-            float sp = 0.22f + 0.16f * menu_hash2(i * 47 + 5, 811);
-            float life = fmodf(anim_t * sp + st, 1.0f);
-            float base_x = right_side ? (float)(nx0 + MENU_NFO_W - 5) : (float)(nx0 + 4);
-            int ex = (int)floorf(base_x + sinf(anim_t * 2.4f + st * 19.0f) * 2.2f);
-            int ey = (int)floorf((float)(ny0 + 24) - life * 22.0f);
-            if (ex >= nx0 + 10 && ex <= nx0 + MENU_NFO_W - 11) continue;
-            if (menu_mat_at(ex, ey) != MM_NONE) continue;
-            float fade = sinf(life * (float)M_PI);
-            if (fade > 0.50f) menu_put(ex, ey, MM_FIRE, 2.8f + 2.6f * fade);
-        }
-    }
-
     // ---- 5. Quantize to ANSI cells and emit ----
     static const char *GLYPHS[7] = { " ", "░", "▒", "▓", "█", "▀", "▄" };
-    int text_c0 = box_left_c + 10;
-    int text_c1 = box_left_c + MENU_NFO_W - 11;
+    int box_bot_r = box_top_r + box_h - 1;
+    int box_right_c = box_left_c + MENU_NFO_W - 1;
 
     int len = 0;
     int cur_fg = -1, cur_bg = -2;
@@ -7221,12 +7055,8 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         int max_c = (r == rows - 1) ? (cols - 1) : cols;
         bool positioned = false;
         for (int c = 0; c < max_c; c++) {
-            // Skip interior text rows so menu text is never overwritten by spaces before redraw (zero flicker)
-            bool skip_header = (r == box_top_r + 1 && c >= box_left_c + 20 && c <= box_left_c + MENU_NFO_W - 21);
-            bool skip_body   = (c >= text_c0 && c <= text_c1 &&
-                                ((r >= box_top_r + 3 && r <= box_top_r + 9) ||
-                                 r == box_top_r + 11 || r == box_top_r + 12 || r == box_top_r + 14));
-            if (skip_header || skip_body) {
+            // Skip menu box region completely so baroque .NFO border & text paint once (zero flicker)
+            if (r >= box_top_r && r <= box_bot_r && c >= box_left_c && c <= box_right_c) {
                 positioned = false;
                 continue;
             }
@@ -7419,10 +7249,72 @@ static bool run_setup_menu(void) {
                                          start_r, start_c, box_w, box_h,
                                          menu_anim_t);
 
-        // Transparent .NFO Header (padded across cols 20..57 so top baroque scrolls connect cleanly)
+        // Draw authentic baroque .NFO CP437 border with Dark Souls antique-gold & ember palette (100% transparent bg)
+        float nfo_sweep = fmodf(menu_anim_t * 20.0f, 160.0f) - 30.0f;
+        float ds_pulse = 0.5f + 0.5f * sinf(menu_anim_t * 3.2f);
+        for (int br = 0; br < 17; br++) {
+            len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                "\033[%d;%dH\033[49m", start_r + br, start_c);
+            int cur_rgb = -1;
+            for (int bc = 0; bc < MENU_NFO_W; bc++) {
+                int mx = (bc < MENU_NFO_HALF_W) ? bc : (MENU_NFO_W - 1 - bc);
+                char code = MENU_NFO_BORDER_HALF[br][mx];
+                if (code == ' ') {
+                    if (len + 4 < (int)sizeof(s_menu_buf)) s_menu_buf[len++] = ' ';
+                    continue;
+                }
+                const char *gl = "█";
+                int cr_c, cg_c, cb_c;
+                if (code == 'F') gl = "█";
+                else if (code == 'T') gl = "▀";
+                else if (code == 'B') gl = "▄";
+                else if (code == 'W') gl = "▓";
+                else if (code == 'M') gl = "▒";
+                else if (code == 'L') gl = "░";
+                else if (code == 'G') gl = "█";
+
+                if (code == 'M') {
+                    // Deep Dark Souls ember crimson shading (▒)
+                    cr_c = 166; cg_c = 52; cb_c = 20;
+                } else if (code == 'L') {
+                    // Smoldering dark crimson shadow (░)
+                    cr_c = 118; cg_c = 32; cb_c = 16;
+                } else if (code == 'W') {
+                    // Burnished copper transition (▓)
+                    cr_c = 186; cg_c = 98; cb_c = 34;
+                } else if (code == 'G') {
+                    // Glowing ember-gold jewel inside the baroque cross
+                    cr_c = 242 + (int)(13.0f * ds_pulse);
+                    cg_c = 178 + (int)(48.0f * ds_pulse);
+                    cb_c = 68  + (int)(40.0f * ds_pulse);
+                } else {
+                    // Antique Dark Souls gold/bronze gradient with subtle specular glint
+                    float v = (float)br / 16.0f;
+                    float warm = 1.0f - 0.35f * sinf(v * (float)M_PI);
+                    float sw = fabsf(((float)bc + (float)br * 1.3f) - nfo_sweep);
+                    float glint = (sw < 3.0f) ? (1.0f - sw / 3.0f) : 0.0f;
+                    cr_c = (int)(184.0f * warm + 52.0f * glint + 24.0f * (1.0f - v));
+                    cg_c = (int)(128.0f * warm + 58.0f * glint + 18.0f * (1.0f - v));
+                    cb_c = (int)(54.0f  * warm + 42.0f * glint + 8.0f  * (1.0f - v));
+                    if (cr_c > 255) cr_c = 255;
+                    if (cg_c > 255) cg_c = 255;
+                    if (cb_c > 255) cb_c = 255;
+                }
+                int rgb_key = (cr_c << 16) | (cg_c << 8) | cb_c;
+                if (rgb_key != cur_rgb) {
+                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                        "\033[38;2;%d;%d;%dm", cr_c, cg_c, cb_c);
+                    cur_rgb = rgb_key;
+                }
+                while (*gl && len + 4 < (int)sizeof(s_menu_buf)) s_menu_buf[len++] = *gl++;
+            }
+            len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[0m");
+        }
+
+        // Transparent .NFO Header (centered in open top alcove like PROUDLY PRESENTS)
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[49m      \033[1;38;2;224;228;240mS E S S I O N   S E T U P\033[0;49m       \033[0m",
-            start_r + 1, start_c + 20);
+            "\033[%d;%dH\033[49m\033[1;38;2;238;224;196mS E S S I O N   S E T U P\033[0m",
+            start_r + 1, start_c + 26);
 
         // Prepare values for the 7 .NFO dot-leader rows
         const char *style_str = (style == 2) ? "Bloodborne Hunter's Lamp" :
@@ -7443,27 +7335,26 @@ static bool run_setup_menu(void) {
             style_str, foc_str, sb_str, lb_str, sess_str, "", bgm_str
         };
 
-        int text_c = start_c + 10;
+        int text_c = start_c + 12;
         for (int i = 0; i < 7; i++) {
             bool act = (selected == i);
             int lbl_len = (int)strlen(NFO_LABELS[i]);
-            int dots = 23 - lbl_len;
+            int dots = 22 - lbl_len;
             if (dots < 2) dots = 2;
             char dot_buf[26];
             memset(dot_buf, '.', (size_t)dots);
             dot_buf[dots] = '\0';
 
             len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                "\033[%d;%dH\033[49m  %s%s%s %s%s : ",
+                "\033[%d;%dH\033[49m%s%s%s %s%s : ",
                 start_r + 3 + i, text_c,
-                act ? "\033[1;38;2;255;196;72m▸ " : "\033[38;2;122;126;144m  ",
-                act ? "\033[1;38;2;255;252;242m" : "\033[0;49m\033[38;2;174;178;194m",
+                act ? "\033[1;38;2;255;196;72m▸ " : "\033[38;2;140;118;92m  ",
+                act ? "\033[1;38;2;255;248;228m" : "\033[0;49m\033[38;2;204;186;156m",
                 NFO_LABELS[i],
-                act ? "\033[0;49m\033[38;2;190;112;42m" : "\033[38;2;74;78;94m",
+                act ? "\033[0;49m\033[38;2;204;124;48m" : "\033[38;2;92;74;56m",
                 dot_buf);
 
             if (i == 5) {
-                // Visual ember volume bar: ▓▓▓▓▓▓░░░░ 60% (padded cleanly to right edge of text band)
                 int filled = volume / 10;
                 if (act) len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[1;38;2;255;180;56m◄ ");
                 else     len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "  ");
@@ -7473,63 +7364,49 @@ static bool run_setup_menu(void) {
                             "%s▓", act ? "\033[38;2;255;168;48m" : "\033[38;2;210;110;36m");
                     } else {
                         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                            "\033[38;2;74;78;94m░");
+                            "\033[38;2;86;70;56m░");
                     }
                 }
                 if (volume == 0) {
                     len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                        "%s Mute%s          \033[0m",
-                        act ? "\033[1;38;2;255;238;168m" : "\033[38;2;160;164;180m",
-                        act ? " \033[1;38;2;255;180;56m►" : "  ");
+                        "%s Mute%s\033[0m",
+                        act ? "\033[1;38;2;255;238;168m" : "\033[38;2;176;160;138m",
+                        act ? " \033[1;38;2;255;180;56m►" : "");
                 } else {
                     len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                        "%s %3d%%%s          \033[0m",
-                        act ? "\033[1;38;2;255;238;168m" : "\033[38;2;214;218;230m",
+                        "%s %3d%%%s\033[0m",
+                        act ? "\033[1;38;2;255;238;168m" : "\033[38;2;228;216;194m",
                         volume,
-                        act ? " \033[1;38;2;255;180;56m►" : "  ");
+                        act ? " \033[1;38;2;255;180;56m►" : "");
                 }
+            } else if (act) {
+                len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                    "\033[1;38;2;255;180;56m◄ \033[1;38;2;255;238;168m%s \033[1;38;2;255;180;56m►\033[0m",
+                    nfo_vals[i]);
             } else {
-                int vlen = (int)strlen(nfo_vals[i]);
-                int pad = 24 - vlen;
-                if (pad < 0) pad = 0;
-                if (act) {
-                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                        "\033[1;38;2;255;180;56m◄ \033[1;38;2;255;238;168m%s \033[1;38;2;255;180;56m►%*s\033[0m",
-                        nfo_vals[i], pad, "");
-                } else {
-                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-                        "  \033[38;2;214;218;230m%s%*s\033[0m",
-                        nfo_vals[i], pad + 2, "");
-                }
+                len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                    "  \033[38;2;228;216;194m%s\033[0m",
+                    nfo_vals[i]);
             }
         }
 
-        // Contextual breathing ember CTA centered cleanly inside the interior text band
+        // Contextual breathing ember CTA centered cleanly above the lower baroque scrolls
         const char *cta_str = (style == 2) ? "[  ENTER · AWAKEN THE LAMP  ]" :
                              ((style == 1) ? "[  ENTER · KINDLE THE FLAME  ]" :
                                              "[  ENTER · LIGHT THE HEARTH  ]");
-        int cta_vis_len = (int)strlen(cta_str) - 1; // '·' is 2 UTF-8 bytes, 1 display col
-        int cta_pad_l = (58 - cta_vis_len) / 2;
-        if (cta_pad_l < 0) cta_pad_l = 0;
-        int cta_pad_r = 58 - cta_vis_len - cta_pad_l;
-        if (cta_pad_r < 0) cta_pad_r = 0;
-        float pulse = 0.5f + 0.5f * sinf(menu_anim_t * 3.2f);
-        int cr = 235 + (int)(20.0f * pulse);
-        int cg = 152 + (int)(62.0f * pulse);
-        int cb = 52  + (int)(48.0f * pulse);
+        int cta_vis_len = (int)strlen(cta_str) - 1;
+        int cta_c = start_c + (box_w - cta_vis_len) / 2;
+        int cr = 235 + (int)(20.0f * ds_pulse);
+        int cg = 152 + (int)(62.0f * ds_pulse);
+        int cb = 52  + (int)(48.0f * ds_pulse);
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[49m%*s\033[1;38;2;%d;%d;%dm%s\033[0;49m%*s\033[0m",
-            start_r + 11, start_c + 10, cta_pad_l, "", cr, cg, cb, cta_str, cta_pad_r, "");
+            "\033[%d;%dH\033[49m\033[1;38;2;%d;%d;%dm%s\033[0m",
+            start_r + 11, cta_c, cr, cg, cb, cta_str);
 
-        // Slender curved bottom arc divider with glowing ember diamond (replaces blocky bar)
+        // Understated controls legend nestled between the two lower baroque scrolls (like RELEASE INFO)
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[49m  \033[38;2;78;72;76m╰───────────\033[38;2;126;116;118m─────\033[38;2;186;112;46m══─── \033[1;38;2;%d;%d;%dm◆\033[0;49m\033[38;2;186;112;46m ───══\033[38;2;126;116;118m─────\033[38;2;78;72;76m───────────╯  \033[0m",
-            start_r + 12, start_c + 10, cr, cg, cb);
-
-        // Understated 1-line controls legend centered cleanly below the arc
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[49m          \033[38;2;138;142;160m↑↓\033[38;2;96;100;116m nav · \033[38;2;138;142;160m←→\033[38;2;96;100;116m adjust · \033[38;2;138;142;160m1-7\033[38;2;96;100;116m jump · \033[38;2;138;142;160mq\033[38;2;96;100;116m exit          \033[0m",
-            start_r + 14, start_c + 10);
+            "\033[%d;%dH\033[49m\033[38;2;186;156;110m↑↓\033[38;2;120;98;72m nav · \033[38;2;186;156;110m←→\033[38;2;120;98;72m adj · \033[38;2;186;156;110mq\033[38;2;120;98;72m exit\033[0m",
+            start_r + 14, start_c + 27);
 
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[?2026l");
         safe_write(STDOUT_FILENO, s_menu_buf, len);

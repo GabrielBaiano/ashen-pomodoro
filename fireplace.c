@@ -6660,6 +6660,9 @@ static void sync_volume_config(void) {
 #define MENU_LOGO_PH  30
 #define MENU_LOGO_HEAD_ROWS 13
 #define MENU_LOGO_H_CENTER  49
+#define MENU_NFO_W    72
+#define MENU_NFO_HALF_W 36
+#define MENU_NFO_PH   34
 
 enum { MM_NONE = 0, MM_CHROME, MM_FIRE, MM_VOID, MM_EXTRUDE, MM_WARM_STEEL };
 
@@ -6730,6 +6733,49 @@ static const char *MENU_ASHEN_ART[MENU_LOGO_PH] = {
     "..................................................................................................",
     ".................................................................................................."
 };
+
+static const char *MENU_NFO_HALF[MENU_NFO_PH] = {
+    "....#####.........####..............",
+    "..########......#######.............",
+    ".####..####....###...###............",
+    "####....###...###...................",
+    "###......######.....................",
+    ".###......####......................",
+    "..###...............................",
+    "..####..............................",
+    ".#####..............................",
+    "###.##..............................",
+    "..###...............................",
+    "...###..............................",
+    "..####..............................",
+    ".#####..............................",
+    "..####..............................",
+    "...###..............................",
+    "..###...............................",
+    "###.##..............................",
+    ".#####..............................",
+    "..####..............................",
+    "..###....#####......................",
+    ".###...#########....................",
+    "###..####....####...................",
+    "####.###.......##...................",
+    ".######.............................",
+    "..#####...##########################",
+    "...####....#####.................###",
+    "...###..............................",
+    "..###....#..........................",
+    "..##....###.........................",
+    "..##..#######.......................",
+    ".##.....###.........................",
+    ".#.......#..........................",
+    "...................................."
+};
+
+static inline bool menu_nfo_solid(int ax, int ay) {
+    if (ax < 0 || ax >= MENU_NFO_W || ay < 0 || ay >= MENU_NFO_PH) return false;
+    int mx = (ax < MENU_NFO_HALF_W) ? ax : (MENU_NFO_W - 1 - ax);
+    return MENU_NFO_HALF[ay][mx] == '#';
+}
 
 static const RGB *menu_ramp(int mat, int *n) {
     switch (mat) {
@@ -6820,10 +6866,9 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
     memset(s_menu_sub, 0, sizeof(s_menu_sub));
     memset(s_menu_glow, 0, sizeof(s_menu_glow));
 
+    (void)box_w;
     int box_top_r = start_r - 1;
-    int box_bot_r = start_r - 1 + box_h - 1;
     int box_left_c = start_c - 1;
-    int box_right_c = start_c - 1 + box_w - 1;
 
     MenuLogoLayout LL = menu_logo_layout(cols, rows, box_h);
     int logo_top_r = box_top_r - LL.gap - LL.rows;
@@ -7071,6 +7116,80 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         }
     }
 
+    // ---- 4b. Baroque Forged-Steel .NFO Frame around the transparent Setup Menu ----
+    if (cols >= MENU_NFO_W && rows >= box_h) {
+        int nx0 = box_left_c;
+        int ny0 = box_top_r * 2;
+        float nfo_sweep = fmodf(anim_t * 20.0f, 160.0f) - 30.0f;
+
+        // 1px pitch-black contour + tight crimson drop shadow (only into empty space so ASHEN blades stay intact)
+        for (int ay = -1; ay <= MENU_NFO_PH; ay++) {
+            for (int ax = -1; ax <= MENU_NFO_W; ax++) {
+                int x = nx0 + ax, y = ny0 + ay;
+                if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
+                if (menu_nfo_solid(ax, ay)) continue;
+
+                bool near = false;
+                for (int dy = -1; dy <= 1 && !near; dy++) {
+                    for (int dx = -1; dx <= 1 && !near; dx++) {
+                        if (menu_nfo_solid(ax + dx, ay + dy)) near = true;
+                    }
+                }
+                if (near) {
+                    if (menu_mat_at(x, y) == MM_NONE) menu_put(x, y, MM_VOID, 0.0f);
+                } else {
+                    bool ext = menu_nfo_solid(ax - 1, ay - 1) || menu_nfo_solid(ax - 1, ay - 2);
+                    if (ext && menu_mat_at(x, y) == MM_NONE) {
+                        menu_put(x, y, MM_EXTRUDE, 0.8f);
+                    }
+                }
+            }
+        }
+
+        // Forged-steel chrome shading matching ASHEN + subtle ember glint on center dagger
+        for (int ay = 0; ay < MENU_NFO_PH; ay++) {
+            for (int ax = 0; ax < MENU_NFO_W; ax++) {
+                if (!menu_nfo_solid(ax, ay)) continue;
+                int x = nx0 + ax, y = ny0 + ay;
+                if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
+
+                bool up    = !menu_nfo_solid(ax, ay - 1);
+                bool left  = !menu_nfo_solid(ax - 1, ay);
+                bool down  = !menu_nfo_solid(ax, ay + 1);
+                bool right = !menu_nfo_solid(ax + 1, ay);
+
+                // Vertical metallic gradient with subtle wave along the sculpted pillars
+                float v = (float)ay / (float)(MENU_NFO_PH - 1);
+                float pos = 4.4f - 1.3f * sinf(v * (float)M_PI * 2.0f) - 0.9f * v;
+                pos += (menu_vnoise2((float)ax * 0.35f, (float)ay * 0.18f) - 0.5f) * 0.32f;
+
+                if (up)                 pos += 1.05f;
+                else if (left && !down) pos += 0.45f;
+                if (down && right)      pos -= 0.70f;
+                else if (down)          pos -= 0.40f;
+
+                // Brighten the corner 4-point NFO stars so they gleam crisply
+                if (ay >= 28 && ((ax >= 5 && ax <= 13) || (ax >= MENU_NFO_W - 14 && ax <= MENU_NFO_W - 6))) {
+                    pos += 1.25f;
+                }
+
+                // Synchronized specular sheen gliding across ASHEN and the NFO steel frame
+                float sw = ((float)ax + (float)ay * 0.55f) - nfo_sweep;
+                if (fabsf(sw) < 2.6f) {
+                    pos += 1.35f * (1.0f - fabsf(sw) / 2.6f);
+                }
+
+                // Subtle ember reflection on the central bottom dagger tip beneath the Darksign bleed
+                int dist_mid = abs(ax - (MENU_NFO_HALF_W - 1));
+                if (ay >= 25 && ay <= 26 && dist_mid <= 2) {
+                    menu_put(x, y, MM_WARM_STEEL, 3.6f - 0.5f * (float)dist_mid);
+                } else {
+                    menu_put(x, y, MM_CHROME, menu_clampf(pos, 1.0f, 6.0f));
+                }
+            }
+        }
+    }
+
     // ---- 5. Quantize to ANSI cells and emit ----
     static const char *GLYPHS[7] = { " ", "░", "▒", "▓", "█", "▀", "▄" };
 
@@ -7080,10 +7199,6 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         int max_c = (r == rows - 1) ? (cols - 1) : cols;
         bool positioned = false;
         for (int c = 0; c < max_c; c++) {
-            if (r >= box_top_r && r <= box_bot_r && c >= box_left_c && c <= box_right_c) {
-                positioned = false;
-                continue;
-            }
             if (len + 80 >= (int)buf_cap) break;
 
             MenuSubPx *tp = &s_menu_sub[r * 2][c];
@@ -7189,9 +7304,9 @@ static bool run_setup_menu(void) {
             safe_write(STDOUT_FILENO, "\033[2J\033[H", 7);
         }
 
-        int box_w = 66;
+        int box_w = MENU_NFO_W;
         int box_h = 17;
-        // Stack the compact ASHEN emblem directly above the box with tight balanced spacing
+        // Stack the ASHEN emblem directly above the baroque steel .NFO menu frame
         MenuLogoLayout logo_l = menu_logo_layout(g_term_cols, g_term_rows, box_h);
         int logo_block = (logo_l.scale > 0) ? (logo_l.rows + logo_l.gap) : 0;
         int start_r = (g_term_rows - box_h - logo_block) / 2 + 1 + logo_block;
@@ -7238,7 +7353,7 @@ static bool run_setup_menu(void) {
                             } else if (btn == 65) {
                                 selected = (selected + 1) % 7;
                             } else if (btn == 0) {
-                                int row_idx = my - (start_r + 5);
+                                int row_idx = my - (start_r + 3);
                                 if (row_idx >= 0 && row_idx <= 6) {
                                     selected = row_idx;
                                 }
@@ -7290,124 +7405,104 @@ static bool run_setup_menu(void) {
                                          start_r, start_c, box_w, box_h,
                                          menu_anim_t);
 
-        // Border & Header
+        // Transparent .NFO Header (centered cleanly in the open top alcove below the Darksign drip)
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╔════════════════════════════════════════════════════════════════╗\033[0m",
-            start_r, start_c);
+            "\033[%d;%dH\033[49m\033[1;38;2;224;228;240mS E S S I O N   S E T U P\033[0m",
+            start_r + 1, start_c + 23);
 
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;255;210;110m║                  BONFIRE POMODORO SETUP                        ║\033[0m",
-            start_r + 1, start_c);
-
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;180;120;60m║            Configure your session before kindling              ║\033[0m",
-            start_r + 2, start_c);
-
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╠════════════════════════════════════════════════════════════════╣\033[0m",
-            start_r + 3, start_c);
-
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m║                                                                ║\033[0m",
-            start_r + 4, start_c);
-
-        // Row 0: Style
+        // Prepare values for the 7 .NFO dot-leader rows
         const char *style_str = (style == 2) ? "Bloodborne Hunter's Lamp" :
                                ((style == 1) ? "Dark Souls Bonfire" : "Classic Wood Fireplace");
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 5, start_c,
-            (selected == 0) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 0) ? "▶ " : "  ",
-            "[1] Fireplace Style:",
-            style_str);
-
-        // Row 1: Focus
-        char foc_str[32];
+        char foc_str[32], sb_str[32], lb_str[32], sess_str[32];
         snprintf(foc_str, sizeof(foc_str), "%d min", focus_min);
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 6, start_c,
-            (selected == 1) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 1) ? "▶ " : "  ",
-            "[2] Focus Duration:",
-            foc_str);
-
-        // Row 2: Short Break
-        char sb_str[32];
         snprintf(sb_str, sizeof(sb_str), "%d min", short_break_min);
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 7, start_c,
-            (selected == 2) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 2) ? "▶ " : "  ",
-            "[3] Short Break:",
-            sb_str);
-
-        // Row 3: Long Break
-        char lb_str[32];
         snprintf(lb_str, sizeof(lb_str), "%d min", long_break_min);
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 8, start_c,
-            (selected == 3) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 3) ? "▶ " : "  ",
-            "[4] Long Break:",
-            lb_str);
-
-        // Row 4: Sessions
-        char sess_str[32];
         snprintf(sess_str, sizeof(sess_str), "%d sessions", sessions);
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 9, start_c,
-            (selected == 4) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 4) ? "▶ " : "  ",
-            "[5] Sessions / Cycle:",
-            sess_str);
-
-        // Row 5: Sound Volume
-        char vol_str[32];
-        if (volume == 0) snprintf(vol_str, sizeof(vol_str), "Mute (0%%)");
-        else snprintf(vol_str, sizeof(vol_str), "%d%%", volume);
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 10, start_c,
-            (selected == 5) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 5) ? "▶ " : "  ",
-            "[6] Sound Volume:",
-            vol_str);
-
-        // Row 6: Dark Souls Music
         const char *bgm_str = (bgm == MUSIC_TRACK_GWYN) ? "Gwyn (Lofi Slowed)" :
                               (bgm == MUSIC_TRACK_FIRELINK) ? "Firelink (Lofi)" : "Off (Crackle Only)";
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-24s ►         \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 11, start_c,
-            (selected == 6) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 6) ? "▶ " : "  ",
-            "[7] Dark Souls Music:",
-            bgm_str);
 
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m║                                                                ║\033[0m",
-            start_r + 12, start_c);
+        static const char *NFO_LABELS[7] = {
+            "STYLE", "FOCUS DURATION", "SHORT BREAK", "LONG BREAK",
+            "SESSIONS / CYCLE", "SOUND VOLUME", "SOUNDTRACK"
+        };
+        const char *nfo_vals[7] = {
+            style_str, foc_str, sb_str, lb_str, sess_str, "", bgm_str
+        };
 
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╠════════════════════════════════════════════════════════════════╣\033[0m",
-            start_r + 13, start_c);
+        int text_c = start_c + 9;
+        for (int i = 0; i < 7; i++) {
+            bool act = (selected == i);
+            int lbl_len = (int)strlen(NFO_LABELS[i]);
+            int dots = 21 - lbl_len;
+            if (dots < 2) dots = 2;
+            char dot_buf[24];
+            memset(dot_buf, '.', (size_t)dots);
+            dot_buf[dots] = '\0';
 
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;220;190;140m║ [↑/↓ or 1-7] Navigate  [←/→] Adjust  [Enter/Space] Start       ║\033[0m",
-            start_r + 14, start_c);
+            len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                "\033[%d;%dH\033[49m%s%s%s %s%s : ",
+                start_r + 3 + i, text_c,
+                act ? "\033[1;38;2;255;196;72m▸ " : "\033[38;2;122;126;144m  ",
+                act ? "\033[1;38;2;255;252;242m" : "\033[0;49m\033[38;2;174;178;194m",
+                NFO_LABELS[i],
+                act ? "\033[0;49m\033[38;2;190;112;42m" : "\033[38;2;74;78;94m",
+                dot_buf);
 
-        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;160;140;120m║ [Q] Exit                                                       ║\033[0m",
-            start_r + 15, start_c);
+            if (i == 5) {
+                // Visual ember volume bar: ▓▓▓▓▓▓░░░░ 60%
+                int filled = volume / 10;
+                if (act) len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[1;38;2;255;180;56m◄ ");
+                else     len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "  ");
+                for (int b = 0; b < 10; b++) {
+                    if (b < filled) {
+                        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                            "%s▓", act ? "\033[38;2;255;168;48m" : "\033[38;2;210;110;36m");
+                    } else {
+                        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                            "\033[38;2;74;78;94m░");
+                    }
+                }
+                if (volume == 0) {
+                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                        "%s Mute%s\033[0m",
+                        act ? "\033[1;38;2;255;238;168m" : "\033[38;2;160;164;180m",
+                        act ? " \033[1;38;2;255;180;56m►" : "");
+                } else {
+                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                        "%s %3d%%%s\033[0m",
+                        act ? "\033[1;38;2;255;238;168m" : "\033[38;2;214;218;230m",
+                        volume,
+                        act ? " \033[1;38;2;255;180;56m►" : "");
+                }
+            } else if (act) {
+                len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                    "\033[1;38;2;255;180;56m◄ \033[1;38;2;255;238;168m%s \033[1;38;2;255;180;56m►\033[0m",
+                    nfo_vals[i]);
+            } else {
+                len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                    "  \033[38;2;214;218;230m%s\033[0m",
+                    nfo_vals[i]);
+            }
+        }
 
+        // Contextual breathing ember CTA centered between the lower baroque scrolls
+        const char *cta_str = (style == 2) ? "[  ENTER · AWAKEN THE LAMP  ]" :
+                             ((style == 1) ? "[  ENTER · KINDLE THE FLAME  ]" :
+                                             "[  ENTER · LIGHT THE HEARTH  ]");
+        int cta_vis_len = (int)strlen(cta_str) - 1; // '·' is 2 UTF-8 bytes, 1 display col
+        int cta_c = start_c + (box_w - cta_vis_len) / 2;
+        float pulse = 0.5f + 0.5f * sinf(menu_anim_t * 3.2f);
+        int cr = 235 + (int)(20.0f * pulse);
+        int cg = 152 + (int)(62.0f * pulse);
+        int cb = 52  + (int)(48.0f * pulse);
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╚════════════════════════════════════════════════════════════════╝\033[0m",
-            start_r + 16, start_c);
+            "\033[%d;%dH\033[49m\033[1;38;2;%d;%d;%dm%s\033[0m",
+            start_r + 11, cta_c, cr, cg, cb, cta_str);
+
+        // Understated 1-line controls legend framed cleanly between the bottom corner chrome stars
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+            "\033[%d;%dH\033[49m\033[38;2;138;142;160m↑↓\033[38;2;96;100;116m nav · \033[38;2;138;142;160m←→\033[38;2;96;100;116m adjust · \033[38;2;138;142;160m1-7\033[38;2;96;100;116m jump · \033[38;2;138;142;160mq\033[38;2;96;100;116m exit\033[0m",
+            start_r + 14, start_c + 17);
 
         safe_write(STDOUT_FILENO, s_menu_buf, len);
         menu_anim_t += 0.025f;

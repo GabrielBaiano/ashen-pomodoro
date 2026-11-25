@@ -2939,7 +2939,7 @@ static void update_simulation(void) {
                     g_rest_duration = g_short_break_duration;
                     g_banner_type = BANNER_REST;
                 }
-                g_banner_timer = 4.0f;
+                g_banner_timer = 3.6f;
                 play_alert_sound();
                 send_system_notification("Bonfire Pomodoro", g_is_long_break ? "Focus complete! Time for a long rest." : "Focus complete! Rest at the bonfire.");
                 if (!g_cycle_logged) {
@@ -5266,6 +5266,277 @@ static void render_modal_row(char *buf, int buf_cap, int *buf_len, int row, int 
     if (n > 0) *buf_len += n;
 }
 
+// ============================================================================
+// Cinematic Dark Souls / Bloodborne Trajan-style Half-Block ANSI Banners
+// ============================================================================
+
+typedef struct {
+    char ch;
+    uint8_t w;
+    const char *rows[8];
+} BannerGlyph;
+
+static const BannerGlyph BANNER_TRAJAN_FONT[] = {
+    {'A', 6, { "..##..", ".####.", ".#..#.", ".#..#.", "######", "#....#", "#....#", "##..##" }},
+    {'B', 5, { "####.", ".#..#", ".#..#", "####.", ".#..#", ".#..#", ".#..#", "####." }},
+    {'D', 6, { "#####.", ".#...#", ".#...#", ".#...#", ".#...#", ".#...#", ".#...#", "#####." }},
+    {'E', 5, { "#####", ".#..#", ".#...", "####.", ".#...", ".#...", ".#..#", "#####" }},
+    {'F', 5, { "#####", ".#..#", ".#...", "####.", ".#...", ".#...", ".#...", "###.." }},
+    {'G', 6, { ".####.", "##..##", "#.....", "#..###", "#....#", "#....#", "##..##", ".####." }},
+    {'H', 6, { "##..##", ".#..#.", ".#..#.", "######", ".#..#.", ".#..#.", ".#..#.", "##..##" }},
+    {'I', 3, { "###",   ".#.",   ".#.",   ".#.",   ".#.",   ".#.",   ".#.",   "###"   }},
+    {'L', 5, { "###..", ".#...", ".#...", ".#...", ".#...", ".#...", ".#..#", "#####" }},
+    {'N', 6, { "##..##", "###.#.", ".##.#.", ".#.##.", ".#.##.", ".#..#.", ".#..#.", "##..##" }},
+    {'O', 6, { ".####.", "##..##", "#....#", "#....#", "#....#", "#....#", "##..##", ".####." }},
+    {'P', 5, { "####.", ".#..#", ".#..#", ".#..#", "####.", ".#...", ".#...", "###.." }},
+    {'R', 6, { "####..", ".#..#.", ".#..#.", ".####.", ".#.#..", ".#..#.", ".#..#.", "###.##" }},
+    {'S', 5, { ".####", "#...#", "#....", ".###.", "....#", "....#", "#...#", "####." }},
+    {'T', 5, { "#####", "#.#.#", "..#..", "..#..", "..#..", "..#..", "..#..", ".###." }},
+    {'U', 6, { "##..##", ".#..#.", ".#..#.", ".#..#.", ".#..#.", ".#..#.", ".##.##", "..##.." }},
+    {'Y', 5, { "##.##", ".#.#.", ".#.#.", "..#..", "..#..", "..#..", "..#..", ".###." }},
+    {' ', 4, { "....",  "....",  "....",  "....",  "....",  "....",  "....",  "...."  }}
+};
+
+static const BannerGlyph *banner_find_glyph(char ch) {
+    size_t n = sizeof(BANNER_TRAJAN_FONT) / sizeof(BANNER_TRAJAN_FONT[0]);
+    for (size_t i = 0; i < n; i++) {
+        if (BANNER_TRAJAN_FONT[i].ch == ch) return &BANNER_TRAJAN_FONT[i];
+    }
+    return &BANNER_TRAJAN_FONT[n - 1];
+}
+
+typedef struct {
+    RGB bg;
+    RGB bloom;
+    RGB hi;
+    RGB mid;
+    RGB lo;
+    RGB rule;
+} BannerTheme;
+
+static int banner_bg_cell(char *dst, int cap, const BannerTheme *th, float band) {
+    if (band >= 0.85f) return snprintf(dst, cap, "\033[48;2;%d;%d;%dm ", th->bg.r, th->bg.g, th->bg.b);
+    if (band < 0.30f) return snprintf(dst, cap, "\033[49m ");
+    return snprintf(dst, cap, "\033[49m\033[38;2;%d;%d;%dm%s",
+                    th->bg.r, th->bg.g, th->bg.b, (band < 0.6f) ? "░" : "▒");
+}
+
+static void render_souls_banner(char *buf, int buf_cap, int *buf_len,
+                                int text_rows, int cols,
+                                const char *text, const BannerTheme *th,
+                                float alpha, float progress) {
+    if (cols < 24 || text_rows < 8 || alpha < 0.02f) return;
+    float band = alpha;
+
+    int tlen = (int)strlen(text);
+    // Choose letter tracking (2 cols wide, or 1 col if tight)
+    int track = 2;
+    int art_w = 0;
+    for (int i = 0; i < tlen; i++) {
+        art_w += banner_find_glyph(text[i])->w;
+        if (i + 1 < tlen) art_w += track;
+    }
+    if (art_w + 18 > cols && track > 1) {
+        track = 1;
+        art_w = 0;
+        for (int i = 0; i < tlen; i++) {
+            art_w += banner_find_glyph(text[i])->w;
+            if (i + 1 < tlen) art_w += track;
+        }
+    }
+
+    int center_row = text_rows / 2;
+    int fade_w = 6;
+
+    // Fallback for narrow terminals: clean spaced text inside dark cinematic band
+    if (art_w + 10 > cols || art_w > 180) {
+        int spaced_w = tlen * 2 - 1;
+        int inner_w = spaced_w + 10;
+        if (inner_w > cols - 4) inner_w = cols - 4;
+        int start_c = (cols - inner_w) / 2 + 1;
+        int br = center_row - 1;
+        if (br < 2) br = 2;
+        int rt = (int)(th->hi.r * alpha), gt = (int)(th->hi.g * alpha), bt = (int)(th->hi.b * alpha);
+        int rr = (int)(th->rule.r * alpha), gr = (int)(th->rule.g * alpha), br_c = (int)(th->rule.b * alpha);
+        int n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+            "\033[%d;%dH\033[48;2;%d;%d;%dm\033[38;2;%d;%d;%dm%*s\033[0m",
+            br, start_c, th->bg.r, th->bg.g, th->bg.b, rr, gr, br_c, inner_w, "");
+        if (n > 0) *buf_len += n;
+        int tc = (cols - spaced_w) / 2 + 1;
+        n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+            "\033[%d;%dH\033[48;2;%d;%d;%dm\033[1;38;2;%d;%d;%dm",
+            br + 1, tc, th->bg.r, th->bg.g, th->bg.b, rt, gt, bt);
+        if (n > 0) *buf_len += n;
+        for (int i = 0; i < tlen && *buf_len + 4 < buf_cap; i++) {
+            buf[(*buf_len)++] = text[i];
+            if (i + 1 < tlen) buf[(*buf_len)++] = ' ';
+        }
+        n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[0m");
+        if (n > 0) *buf_len += n;
+        return;
+    }
+
+    // Rasterize Trajan glyphs into a compact 8x200 subpixel mask
+    static uint8_t mask[8][200];
+    int pad_x = 5;
+    int inner_w = art_w + pad_x * 2;
+    if (inner_w > 196) inner_w = 196;
+    memset(mask, 0, sizeof(mask));
+
+    int cx = pad_x;
+    for (int i = 0; i < tlen; i++) {
+        const BannerGlyph *g = banner_find_glyph(text[i]);
+        for (int gy = 0; gy < 8; gy++) {
+            for (int gx = 0; gx < g->w; gx++) {
+                if (g->rows[gy][gx] == '#' && cx + gx < inner_w) {
+                    mask[gy][cx + gx] = 1;
+                }
+            }
+        }
+        cx += g->w + track;
+    }
+
+    int total_w = inner_w + fade_w * 2;
+    if (total_w > cols) {
+        fade_w = (cols - inner_w) / 2;
+        if (fade_w < 0) fade_w = 0;
+        total_w = inner_w + fade_w * 2;
+    }
+    int start_c = (cols - total_w) / 2 + 1;
+    int banner_row = center_row - 3;
+    if (banner_row < 2) banner_row = 2;
+
+    // Horizontal specular glint sweeping across the lettering during display
+    float sweep_x = -12.0f + progress * (float)(inner_w + 24);
+
+    // Top & bottom ornamental gradient rules (rows 0 and 5) with lateral transparent shade fade
+    for (int pass = 0; pass < 2; pass++) {
+        int r_out = (pass == 0) ? banner_row : (banner_row + 5);
+        int n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[%d;%dH", r_out, start_c);
+        if (n > 0) *buf_len += n;
+        for (int x = 0; x < total_w && *buf_len + 48 < buf_cap; x++) {
+            if (x < fade_w || x >= total_w - fade_w) {
+                int dist_edge = (x < fade_w) ? x : (total_w - 1 - x);
+                const char *sh = (dist_edge < 2) ? "░" : ((dist_edge < 4) ? "▒" : "▓");
+                if (band < 0.85f) sh = " ";
+                n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+                    "\033[49m\033[38;2;%d;%d;%dm%s", th->bg.r, th->bg.g, th->bg.b, sh);
+                if (n > 0) *buf_len += n;
+            } else {
+                int ix = x - fade_w;
+                float u = (float)ix / fmaxf(1.0f, (float)(inner_w - 1));
+                float arch = sinf(u * (float)M_PI);
+                float lum = (0.18f + 0.82f * arch * arch) * alpha;
+                int rr = (int)(th->rule.r * lum);
+                int gr = (int)(th->rule.g * lum);
+                int br = (int)(th->rule.b * lum);
+                const char *sym = (ix == inner_w / 2) ? "◆" :
+                                  ((arch > 0.72f) ? "━" : ((arch > 0.25f) ? "─" : " "));
+                if (band < 0.85f) {
+                    if (sym[0] == ' ') n = banner_bg_cell(buf + *buf_len, buf_cap - *buf_len, th, band);
+                    else n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+                        "\033[49m\033[38;2;%d;%d;%dm%s", rr, gr, br, sym);
+                } else {
+                    n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+                        "\033[48;2;%d;%d;%dm\033[38;2;%d;%d;%dm%s",
+                        th->bg.r, th->bg.g, th->bg.b, rr, gr, br, sym);
+                }
+                if (n > 0) *buf_len += n;
+            }
+        }
+        n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[0m");
+        if (n > 0) *buf_len += n;
+    }
+
+    // 4 half-block rows (8 subpixels) for the Trajan lettering + soft inner bloom
+    for (int br = 0; br < 4; br++) {
+        int r_out = banner_row + 1 + br;
+        int y0 = br * 2;
+        int y1 = br * 2 + 1;
+        int n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[%d;%dH", r_out, start_c);
+        if (n > 0) *buf_len += n;
+
+        for (int x = 0; x < total_w && *buf_len + 64 < buf_cap; x++) {
+            if (x < fade_w || x >= total_w - fade_w) {
+                int dist_edge = (x < fade_w) ? x : (total_w - 1 - x);
+                const char *sh = (dist_edge < 2) ? "░" : ((dist_edge < 4) ? "▒" : "▓");
+                if (band < 0.85f) sh = " ";
+                n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+                    "\033[49m\033[38;2;%d;%d;%dm%s", th->bg.r, th->bg.g, th->bg.b, sh);
+                if (n > 0) *buf_len += n;
+                continue;
+            }
+
+            int ix = x - fade_w;
+            RGB c_sub[2];
+            for (int s = 0; s < 2; s++) {
+                int sy = (s == 0) ? y0 : y1;
+                if (mask[sy][ix]) {
+                    float v = (float)sy / 7.0f;
+                    float cr, cg, cb;
+                    if (v < 0.45f) {
+                        float t = v / 0.45f;
+                        cr = th->hi.r + (th->mid.r - th->hi.r) * t;
+                        cg = th->hi.g + (th->mid.g - th->hi.g) * t;
+                        cb = th->hi.b + (th->mid.b - th->hi.b) * t;
+                    } else {
+                        float t = (v - 0.45f) / 0.55f;
+                        cr = th->mid.r + (th->lo.r - th->mid.r) * t;
+                        cg = th->mid.g + (th->lo.g - th->mid.g) * t;
+                        cb = th->mid.b + (th->lo.b - th->mid.b) * t;
+                    }
+                    float dsw = fabsf(((float)ix + (float)sy * 0.6f) - sweep_x);
+                    if (dsw < 4.0f) {
+                        float g = (1.0f - dsw / 4.0f) * 0.42f;
+                        cr += (255.0f - cr) * g;
+                        cg += (255.0f - cg) * g;
+                        cb += (255.0f - cb) * g;
+                    }
+                    c_sub[s].r = (uint8_t)(th->bg.r + (cr - th->bg.r) * alpha);
+                    c_sub[s].g = (uint8_t)(th->bg.g + (cg - th->bg.g) * alpha);
+                    c_sub[s].b = (uint8_t)(th->bg.b + (cb - th->bg.b) * alpha);
+                } else {
+                    bool near = (ix > 0 && mask[sy][ix - 1]) || (ix + 1 < inner_w && mask[sy][ix + 1]) ||
+                                (sy > 0 && mask[sy - 1][ix]) || (sy < 7 && mask[sy + 1][ix]);
+                    if (near) {
+                        c_sub[s].r = (uint8_t)(th->bg.r + (th->bloom.r - th->bg.r) * alpha);
+                        c_sub[s].g = (uint8_t)(th->bg.g + (th->bloom.g - th->bg.g) * alpha);
+                        c_sub[s].b = (uint8_t)(th->bg.b + (th->bloom.b - th->bg.b) * alpha);
+                    } else {
+                        c_sub[s] = th->bg;
+                    }
+                }
+            }
+
+            bool t_on = !(c_sub[0].r == th->bg.r && c_sub[0].g == th->bg.g && c_sub[0].b == th->bg.b);
+            bool b_on = !(c_sub[1].r == th->bg.r && c_sub[1].g == th->bg.g && c_sub[1].b == th->bg.b);
+            if (band < 0.85f && !(t_on && b_on)) {
+                // During fade, dark band dissolves into transparent shade so it never lingers as a box
+                if (!t_on && !b_on) {
+                    n = banner_bg_cell(buf + *buf_len, buf_cap - *buf_len, th, band);
+                } else if (t_on) {
+                    n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+                        "\033[49m\033[38;2;%d;%d;%dm▀", c_sub[0].r, c_sub[0].g, c_sub[0].b);
+                } else {
+                    n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+                        "\033[49m\033[38;2;%d;%d;%dm▄", c_sub[1].r, c_sub[1].g, c_sub[1].b);
+                }
+            } else if (c_sub[0].r == c_sub[1].r && c_sub[0].g == c_sub[1].g && c_sub[0].b == c_sub[1].b) {
+                n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+                    "\033[48;2;%d;%d;%dm ", c_sub[0].r, c_sub[0].g, c_sub[0].b);
+            } else {
+                n = snprintf(buf + *buf_len, buf_cap - *buf_len,
+                    "\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm▀",
+                    c_sub[0].r, c_sub[0].g, c_sub[0].b,
+                    c_sub[1].r, c_sub[1].g, c_sub[1].b);
+            }
+            if (n > 0) *buf_len += n;
+        }
+        n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[0m");
+        if (n > 0) *buf_len += n;
+    }
+}
+
 static void render_confirmation_modal(char *buf, int buf_cap, int *buf_len, int text_rows, int pixel_w) {
     if (g_modal_active == MODAL_NONE) return;
 
@@ -5631,223 +5902,53 @@ static int format_frame_buffer(char *buf, int buf_cap) {
     if (n > 0) buf_len += n;
 
     // -------------------------------------------------------------------------
-    // CINEMATIC BANNER OVERLAYS (Lit, Rest, Extinguished)
+    // CINEMATIC BANNER OVERLAYS (Dark Souls / Bloodborne Trajan Half-Block ANSI)
     // -------------------------------------------------------------------------
-    if (g_banner_timer > 0.0f) {
-        float alpha = 1.0f;
-        if (g_banner_timer > 3.3f) {
-            alpha = (4.0f - g_banner_timer) / 0.7f;
-        } else if (g_banner_timer < 0.8f) {
-            alpha = g_banner_timer / 0.8f;
-        }
-        if (alpha < 0.05f) alpha = 0.05f;
-        if (alpha > 1.0f) alpha = 1.0f;
+    static float s_banner_start = 0.0f, s_banner_last = 0.0f;
+    if (g_banner_timer > s_banner_last + 0.001f) s_banner_start = g_banner_timer;
+    s_banner_last = g_banner_timer;
 
-        int center_row = text_rows / 2;
-        int banner_row = center_row - 2;
-        if (banner_row < 2) banner_row = 2;
+    if (g_banner_timer > 0.0f) {
+        // Souls-style envelope: slow eased fade-in (1.1s), hold, quick clean eased fade-out (0.9s)
+        float elapsed = s_banner_start - g_banner_timer;
+        float a_in  = fminf(fmaxf(elapsed / 1.1f, 0.0f), 1.0f);
+        float a_out = fminf(fmaxf(g_banner_timer / 0.9f, 0.0f), 1.0f);
+        a_in  = a_in * a_in * (3.0f - 2.0f * a_in);
+        a_out = a_out * a_out * (3.0f - 2.0f * a_out);
+        float alpha = (a_in < a_out) ? a_in : a_out;
+        float progress = fminf(fmaxf(elapsed / fmaxf(0.1f, s_banner_start), 0.0f), 1.0f);
 
         if (g_is_bloodborne) {
             if (g_banner_type == BANNER_LIT) {
-                int r_acc = (int)(160.0f * alpha), g_acc = (int)(130.0f * alpha), b_acc = (int)(210.0f * alpha);
-                if (g_pixel_w >= 65) {
-                    static const char *s_lamp_lit_font[3] = {
-                        "█    █▀▀█ █▄  █ ▀█▀ █▀▀ █▀▀█ █▄  █   █    ▀█▀ ▀█▀",
-                        "█    █▄▄█ █ ▀▄█  █  █▀▀ █▄▄▀ █ ▀▄█   █     █   █ ",
-                        "▀▀▀  ▀  ▀ ▀   ▀  ▀  ▀▀▀ ▀  ▀ ▀   ▀   ▀▀▀  ▀▀▀  ▀ "
-                    };
-                    int banner_w = 57;
-                    int start_col = (g_pixel_w - banner_w) / 2 + 1;
-                    int r0 = (int)(245.0f * alpha), g0 = (int)(235.0f * alpha), b0 = (int)(255.0f * alpha);
-                    int r1 = (int)(200.0f * alpha), g1 = (int)(170.0f * alpha), b1 = (int)(240.0f * alpha);
-                    int r2 = (int)(150.0f * alpha), g2 = (int)(120.0f * alpha), b2 = (int)(200.0f * alpha);
-
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;12;10;18m\033[1;38;2;%d;%d;%dm  ─── ── ───────────────────────────────────────── ── ───  \033[0m",
-                        banner_row, start_col, r_acc, g_acc, b_acc);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;12;10;18m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                        banner_row + 1, start_col, r0, g0, b0, s_lamp_lit_font[0]);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;12;10;18m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                        banner_row + 2, start_col, r1, g1, b1, s_lamp_lit_font[1]);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;12;10;18m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                        banner_row + 3, start_col, r2, g2, b2, s_lamp_lit_font[2]);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;12;10;18m\033[1;38;2;%d;%d;%dm  ─── ── ───────────────────────────────────────── ── ───  \033[0m",
-                        banner_row + 4, start_col, r_acc, g_acc, b_acc);
-                    if (n > 0) buf_len += n;
-                } else {
-                    const char *title = "L A N T E R N   L I T";
-                    int title_len = 21;
-                    int banner_w = 42;
-                    if (banner_w > g_pixel_w - 4) banner_w = g_pixel_w - 4;
-                    int start_col = (g_pixel_w - banner_w) / 2 + 1;
-                    int text_col = (g_pixel_w - title_len) / 2 + 1;
-                    int r_text = (int)(235.0f * alpha), g_text = (int)(215.0f * alpha), b_text = (int)(255.0f * alpha);
-
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;12;10;18m\033[1;38;2;%d;%d;%dm── ─── ─────────────────────────────── ─── ──\033[0m",
-                        banner_row, start_col, r_acc, g_acc, b_acc);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;12;10;18m\033[1;38;2;%d;%d;%dm%s\033[0m",
-                        banner_row + 1, text_col, r_text, g_text, b_text, title);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;12;10;18m\033[1;38;2;%d;%d;%dm── ─── ─────────────────────────────── ─── ──\033[0m",
-                        banner_row + 2, start_col, r_acc, g_acc, b_acc);
-                    if (n > 0) buf_len += n;
-                }
+                static const BannerTheme th_bb_lit = {
+                    {10, 8, 16}, {38, 30, 62},
+                    {248, 244, 255}, {192, 174, 238}, {118, 98, 172}, {170, 146, 224}
+                };
+                render_souls_banner(buf, buf_cap, &buf_len, text_rows, g_pixel_w,
+                                    "LANTERN LIT", &th_bb_lit, alpha, progress);
             } else if (g_banner_type == BANNER_REST || g_banner_type == BANNER_LONG_REST) {
-                int r_acc = (int)(210.0f * alpha), g_acc = (int)(40.0f * alpha), b_acc = (int)(45.0f * alpha);
-                if (g_pixel_w >= 75) {
-                    static const char *s_prey_font[3] = {
-                        "█▀▀█ █▀▀█ █▀▀ █  █   █▀▀ █    █▀▀█ █  █ █▀▀█ █  █ ▀█▀ █▀▀ █▀▀█ █▀▀█ █▀▀▄",
-                        "█▄▄█ █▄▄▀ █▀▀  ▀█    ▀▀█ █    █▄▄█ █  █ █ ▄▄ █▀▀█  █  █▀▀ █▄▄▀ █▀▀▄ █  █",
-                        "█    ▀  ▀ ▀▀▀   █    ▀▀▀ ▀▀▀  ▀  ▀  ▀▀  ▀▀▀█ ▀  ▀  ▀  ▀▀▀ ▀  ▀ ▀▀▀  ▀▀▀ "
-                    };
-                    int banner_w = 71;
-                    int start_col = (g_pixel_w - banner_w) / 2 + 1;
-                    int r0 = (int)(255.0f * alpha), g0 = (int)(200.0f * alpha), b0 = (int)(200.0f * alpha);
-                    int r1 = (int)(235.0f * alpha), g1 = (int)(50.0f * alpha), b1 = (int)(60.0f * alpha);
-                    int r2 = (int)(160.0f * alpha), g2 = (int)(25.0f * alpha), b2 = (int)(30.0f * alpha);
-
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;18;6;8m\033[1;38;2;%d;%d;%dm  ─── ── ───────────────────────────────────────────────────────────── ── ───  \033[0m",
-                        banner_row, start_col, r_acc, g_acc, b_acc);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;18;6;8m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                        banner_row + 1, start_col, r0, g0, b0, s_prey_font[0]);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;18;6;8m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                        banner_row + 2, start_col, r1, g1, b1, s_prey_font[1]);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;18;6;8m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                        banner_row + 3, start_col, r2, g2, b2, s_prey_font[2]);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;18;6;8m\033[1;38;2;%d;%d;%dm  ─── ── ───────────────────────────────────────────────────────────── ── ───  \033[0m",
-                        banner_row + 4, start_col, r_acc, g_acc, b_acc);
-                    if (n > 0) buf_len += n;
-                } else {
-                    const char *title = "P R E Y   S L A U G H T E R E D";
-                    int title_len = 31;
-                    int banner_w = 46;
-                    if (banner_w > g_pixel_w - 4) banner_w = g_pixel_w - 4;
-                    int start_col = (g_pixel_w - banner_w) / 2 + 1;
-                    int text_col = (g_pixel_w - title_len) / 2 + 1;
-                    int r_text = (int)(245.0f * alpha), g_text = (int)(60.0f * alpha), b_text = (int)(70.0f * alpha);
-
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;18;6;8m\033[1;38;2;%d;%d;%dm── ─── ───────────────────────────────── ─── ──\033[0m",
-                        banner_row, start_col, r_acc, g_acc, b_acc);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;18;6;8m\033[1;38;2;%d;%d;%dm%s\033[0m",
-                        banner_row + 1, text_col, r_text, g_text, b_text, title);
-                    if (n > 0) buf_len += n;
-                    n = snprintf(buf + buf_len, buf_cap - buf_len,
-                        "\033[%d;%dH\033[48;2;18;6;8m\033[1;38;2;%d;%d;%dm── ─── ───────────────────────────────── ─── ──\033[0m",
-                        banner_row + 2, start_col, r_acc, g_acc, b_acc);
-                    if (n > 0) buf_len += n;
-                }
+                static const BannerTheme th_bb_prey = {
+                    {16, 4, 6}, {64, 12, 16},
+                    {255, 208, 208}, {228, 42, 52}, {132, 16, 24}, {205, 42, 48}
+                };
+                render_souls_banner(buf, buf_cap, &buf_len, text_rows, g_pixel_w,
+                                    "PREY SLAUGHTERED", &th_bb_prey, alpha, progress);
             }
         } else if (g_banner_type == BANNER_LIT) {
-            int r_acc = (int)(185.0f * alpha), g_acc = (int)(135.0f * alpha), b_acc = (int)(55.0f * alpha);
-            if (g_pixel_w >= 67) {
-                static const char *s_bonfire_lit_font[3] = {
-                    "█▀▀█  █▀▀█  █▄  █  █▀▀  ▀█▀  █▀▀█  █▀▀      █    ▀█▀  ▀█▀",
-                    "█▀▀▄  █  █  █ ▀▄█  █▀▀   █   █▄▄▀  █▀▀      █     █    █ ",
-                    "▀▀▀   ▀▀▀▀  ▀   ▀  ▀    ▀▀▀  ▀  ▀  ▀▀▀      ▀▀▀  ▀▀▀   ▀ "
-                };
-                int banner_w = 63;
-                int start_col = (g_pixel_w - banner_w) / 2 + 1;
-
-                int r0 = (int)(255.0f * alpha), g0 = (int)(245.0f * alpha), b0 = (int)(185.0f * alpha);
-                int r1 = (int)(250.0f * alpha), g1 = (int)(200.0f * alpha), b1 = (int)(75.0f * alpha);
-                int r2 = (int)(215.0f * alpha), g2 = (int)(135.0f * alpha), b2 = (int)(35.0f * alpha);
-
-                n = snprintf(buf + buf_len, buf_cap - buf_len,
-                    "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm  ─── ── ───────────────────────────────────────────── ── ───  \033[0m",
-                    banner_row, start_col, r_acc, g_acc, b_acc);
-                if (n > 0) buf_len += n;
-
-                n = snprintf(buf + buf_len, buf_cap - buf_len,
-                    "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                    banner_row + 1, start_col, r0, g0, b0, s_bonfire_lit_font[0]);
-                if (n > 0) buf_len += n;
-
-                n = snprintf(buf + buf_len, buf_cap - buf_len,
-                    "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                    banner_row + 2, start_col, r1, g1, b1, s_bonfire_lit_font[1]);
-                if (n > 0) buf_len += n;
-
-                n = snprintf(buf + buf_len, buf_cap - buf_len,
-                    "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                    banner_row + 3, start_col, r2, g2, b2, s_bonfire_lit_font[2]);
-                if (n > 0) buf_len += n;
-
-                n = snprintf(buf + buf_len, buf_cap - buf_len,
-                    "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm  ─── ── ───────────────────────────────────────────── ── ───  \033[0m",
-                    banner_row + 4, start_col, r_acc, g_acc, b_acc);
-                if (n > 0) buf_len += n;
-            } else {
-                const char *title = "B O N F I R E   L I T";
-                int title_len = 21;
-                int banner_w = 44;
-                if (banner_w > g_pixel_w - 4) banner_w = g_pixel_w - 4;
-                int start_col = (g_pixel_w - banner_w) / 2 + 1;
-                int text_col = (g_pixel_w - title_len) / 2 + 1;
-                int r_text = (int)(255.0f * alpha), g_text = (int)(225.0f * alpha), b_text = (int)(130.0f * alpha);
-
-                n = snprintf(buf + buf_len, buf_cap - buf_len,
-                    "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm── ─── ─────────────────────────────── ─── ──\033[0m",
-                    banner_row, start_col, r_acc, g_acc, b_acc);
-                if (n > 0) buf_len += n;
-
-                n = snprintf(buf + buf_len, buf_cap - buf_len,
-                    "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm%s\033[0m",
-                    banner_row + 1, text_col, r_text, g_text, b_text, title);
-                if (n > 0) buf_len += n;
-
-                n = snprintf(buf + buf_len, buf_cap - buf_len,
-                    "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm── ─── ─────────────────────────────── ─── ──\033[0m",
-                    banner_row + 2, start_col, r_acc, g_acc, b_acc);
-                if (n > 0) buf_len += n;
-            }
+            static const BannerTheme th_ds_lit = {
+                {10, 6, 5}, {58, 24, 9},
+                {255, 246, 196}, {246, 190, 64}, {178, 98, 22}, {212, 148, 52}
+            };
+            render_souls_banner(buf, buf_cap, &buf_len, text_rows, g_pixel_w,
+                                "BONFIRE LIT", &th_ds_lit, alpha, progress);
         } else if (g_banner_type == BANNER_REST || g_banner_type == BANNER_LONG_REST) {
-            int r_acc = (int)(185.0f * alpha), g_acc = (int)(135.0f * alpha), b_acc = (int)(55.0f * alpha);
-            const char *title = g_banner_type == BANNER_LONG_REST ? "L O N G   R E S T" : "R E S T   A T   F I R E";
-            int title_len = (int)strlen(title);
-            int banner_w = 44;
-            if (banner_w > g_pixel_w - 4) banner_w = g_pixel_w - 4;
-            int start_col = (g_pixel_w - banner_w) / 2 + 1;
-            int text_col = (g_pixel_w - title_len) / 2 + 1;
-            int r_text = (int)(255.0f * alpha), g_text = (int)(200.0f * alpha), b_text = (int)(90.0f * alpha);
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm── ─── ─────────────────────────────── ─── ──\033[0m",
-                banner_row, start_col, r_acc, g_acc, b_acc);
-            if (n > 0) buf_len += n;
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm%s\033[0m",
-                banner_row + 1, text_col, r_text, g_text, b_text, title);
-            if (n > 0) buf_len += n;
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm── ─── ─────────────────────────────── ─── ──\033[0m",
-                banner_row + 2, start_col, r_acc, g_acc, b_acc);
-            if (n > 0) buf_len += n;
+            static const BannerTheme th_ds_rest = {
+                {10, 6, 5}, {48, 20, 8},
+                {255, 232, 168}, {226, 160, 54}, {152, 82, 22}, {190, 132, 48}
+            };
+            const char *title = (g_banner_type == BANNER_LONG_REST) ? "LONG REST" : "REST AT FIRE";
+            render_souls_banner(buf, buf_cap, &buf_len, text_rows, g_pixel_w,
+                                title, &th_ds_rest, alpha, progress);
         }
     }
 
@@ -6058,7 +6159,7 @@ static void ignite_fireplace(bool is_rekindle) {
     g_bonfire_lit = true;
     g_ignition_timer = 0.01f;
     g_banner_type = BANNER_LIT;
-    g_banner_timer = 4.0f;
+    g_banner_timer = 3.6f;
     g_pomodoro_elapsed = 0.0f;
     g_pomodoro_paused = false;
     g_cycle_logged = false;

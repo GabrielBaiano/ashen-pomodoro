@@ -6729,11 +6729,6 @@ static float menu_vnoise2(float x, float y) {
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-static float menu_fbm2(float x, float y) {
-    return 0.55f * menu_vnoise2(x, y)
-         + 0.30f * menu_vnoise2(x * 2.03f + 17.0f, y * 2.03f + 5.0f)
-         + 0.15f * menu_vnoise2(x * 4.11f + 3.0f, y * 4.11f + 29.0f);
-}
 
 static inline void menu_put(int x, int y, uint8_t mat, float pos) {
     if (x < 0 || x >= s_mcols || y < 0 || y >= s_mph) return;
@@ -6752,161 +6747,98 @@ static inline void menu_glow_add(int c, int r, int rows, float v) {
 }
 
 /* ---------------------------------------------------------------------------
- * Gothic cathedral tower (Anor Londo): body, pointed roof, needle, corner
- * pinnacles, cornice ledge, masonry courses, lancet window and rose window.
+ * "ASHEN HOUR" chiseled ANSI logo
+ * 8x12 block font, 3px strokes. A narrow 6px variant is derived by dropping
+ * the middle column of each stroke, for terminals under ~88 columns.
  * ------------------------------------------------------------------------- */
+static const char *MENU_FONT[8][12] = {
+    { // A
+        ".######.", "########", "###..###", "###..###", "###..###", "########",
+        "########", "###..###", "###..###", "###..###", "###..###", "###..###"
+    },
+    { // S
+        ".#######", "########", "###.....", "###.....", "###.....", "#######.",
+        ".#######", ".....###", ".....###", ".....###", "########", "#######."
+    },
+    { // H
+        "###..###", "###..###", "###..###", "###..###", "###..###", "########",
+        "########", "###..###", "###..###", "###..###", "###..###", "###..###"
+    },
+    { // E
+        "########", "########", "###.....", "###.....", "###.....", "######..",
+        "######..", "###.....", "###.....", "###.....", "########", "########"
+    },
+    { // N (blocky arch, demoscene style)
+        ".######.", "########", "###..###", "###..###", "###..###", "###..###",
+        "###..###", "###..###", "###..###", "###..###", "###..###", "###..###"
+    },
+    { // O
+        ".######.", "########", "###..###", "###..###", "###..###", "###..###",
+        "###..###", "###..###", "###..###", "###..###", "########", ".######."
+    },
+    { // U
+        "###..###", "###..###", "###..###", "###..###", "###..###", "###..###",
+        "###..###", "###..###", "###..###", "###..###", "########", ".######."
+    },
+    { // R
+        "#######.", "########", "###..###", "###..###", "###..###", "########",
+        "#######.", "###.###.", "###..###", "###..###", "###..###", "###..###"
+    }
+};
+
+static int menu_font_index(char c) {
+    switch (c) {
+        case 'A': return 0; case 'S': return 1; case 'H': return 2; case 'E': return 3;
+        case 'N': return 4; case 'O': return 5; case 'U': return 6; case 'R': return 7;
+        default: return -1;
+    }
+}
+
+static const char *MENU_LOGO_TEXT = "ASHEN HOUR";
+static uint8_t s_logo_mask[MENU_MAX_ROWS * 2][MENU_MAX_COLS];
+static float s_menu_tex[MENU_MAX_ROWS][MENU_MAX_COLS];
+
 typedef struct {
-    float tc, hw, yb, rh, needle;
-    int window;   // 0 none, 1 candle-lit, 2 dark
-    int rose;
-    float facing; // +1 lit from the right, -1 lit from the left
-} MenuTower;
+    int scale;   // pixel replication factor
+    bool narrow; // 6px letters instead of 8px
+    int width;   // in columns (= subpixels horizontally)
+    int rows;    // terminal rows used by the logo (incl. outline/shadow)
+} MenuLogoLayout;
 
-static void menu_draw_tower(const MenuTower *t, float ground, float cx, float anim_t, bool far_layer) {
-    float hw = t->hw;
-    float top = t->yb - t->rh - t->needle;
-    int x0 = (int)floorf(t->tc - hw - 1.5f);
-    int x1 = (int)ceilf(t->tc + hw + 1.5f);
-    int y0 = (int)floorf(top);
-    int y1 = (int)ceilf(ground);
-    if (y0 < 0) y0 = 0;
-    if (y1 >= s_mph) y1 = s_mph - 1;
-
-    float fall = menu_clampf(1.0f - (fabsf(t->tc - cx) - 34.0f) / 70.0f, 0.55f, 1.0f);
-    float rose_r = hw * 0.72f;
-    float rose_cy = t->yb + 2.5f + rose_r;
-    float win_y0 = t->yb + 3.0f + (t->rose ? (rose_r * 2.0f + 2.0f) : 0.0f);
-    float win_h = fmaxf(4.0f, hw * 2.8f);
-    float win_hw = fmaxf(0.5f, hw * 0.30f);
-
-    for (int x = x0; x <= x1; x++) {
-        float dx = (float)x + 0.5f - t->tc;
-        float adx = fabsf(dx);
-        for (int y = y0; y <= y1; y++) {
-            float fy = (float)y + 0.5f;
-            int part = -1;
-            if (fy >= t->yb && fy < t->yb + 1.0f && adx <= hw + 1.0f) {
-                part = 4; // cornice ledge
-            } else if (adx <= hw && fy >= t->yb) {
-                part = 0; // body
-            } else if (adx <= hw && fy >= t->yb - t->rh * powf(fmaxf(0.0f, 1.0f - adx / (hw + 0.5f)), 1.15f)) {
-                part = 1; // pointed roof
-            } else if (adx < 0.6f && fy >= top) {
-                part = 2; // needle
-            } else if (hw >= 2.4f && fabsf(adx - hw) < 0.6f && fy >= t->yb - hw * 1.4f - 1.0f) {
-                part = 3; // corner pinnacles
+static MenuLogoLayout menu_logo_layout(int cols, int rows, int box_h) {
+    MenuLogoLayout L;
+    memset(&L, 0, sizeof(L));
+    for (int k = 2; k >= 1; k--) {
+        for (int n = 0; n <= 1; n++) {
+            int lw = (n ? 6 : 8) * k;
+            int gap = 1 * k;
+            int wgap = (n ? 3 : 4) * k;
+            int w = 0, letters = 0;
+            for (const char *p = MENU_LOGO_TEXT; *p; p++) {
+                if (*p == ' ') { w += wgap; continue; }
+                if (letters > 0 && p[-1] != ' ') w += gap;
+                w += lw;
+                letters++;
             }
-            if (part < 0) continue;
-
-            if (far_layer) {
-                menu_put(x, y, MM_FAR, (part == 0 || part == 4) ? 1.0f : 0.0f);
-                continue;
+            int lr = (12 * k + 4) / 2; // 1px outline top + 3px shadow/outline bottom
+            if (w + 4 <= cols && lr + 1 + box_h + 1 <= rows) {
+                L.scale = k; L.narrow = (n == 1); L.width = w; L.rows = lr;
+                return L;
             }
-
-            float s = (dx / (hw + 0.5f)) * t->facing;
-            float pos = 1.7f + 1.4f * s;
-            if (part == 2 || part == 3) pos = 2.0f + 1.8f * s;
-            if (part == 4) pos += 1.3f;
-            pos += 0.7f * (fy / (float)s_mph);
-            if (part == 0 && (((int)(fy - t->yb)) % 6) == 5) pos -= 0.8f;
-
-            if (part == 0 && t->rose) {
-                float ddy = fy - rose_cy;
-                float dd = sqrtf(dx * dx + ddy * ddy);
-                if (dd <= rose_r + 0.3f) {
-                    if (dd > rose_r - 0.8f) {
-                        menu_put(x, y, MM_STONE, (pos + 1.4f) * fall);
-                    } else {
-                        bool tracery = (fabsf(dx) < 0.55f) || (fabsf(ddy) < 0.55f) || (dd < 0.9f);
-                        if (tracery) {
-                            menu_put(x, y, MM_STONE, 1.2f * fall);
-                        } else {
-                            float fl = 0.5f + 0.5f * sinf(anim_t * 2.7f + t->tc * 0.7f);
-                            menu_put(x, y, MM_FIRE, 3.2f + 1.6f * (1.0f - dd / rose_r) + fl * 0.6f);
-                        }
-                    }
-                    continue;
-                }
-            }
-
-            if (part == 0 && t->window) {
-                float wyr = fy - win_y0;
-                if (wyr >= 0.0f && wyr <= win_h) {
-                    float arch = (wyr < win_hw * 1.8f) ? win_hw * (wyr / (win_hw * 1.8f)) : win_hw;
-                    if (adx <= arch + 0.05f) {
-                        if (t->window == 1) {
-                            float fl = 0.5f + 0.5f * sinf(anim_t * 3.1f + t->tc);
-                            menu_put(x, y, MM_FIRE, 2.6f + 1.8f * (wyr / win_h) + fl * 0.7f);
-                        } else {
-                            menu_put(x, y, MM_STONE, 0.0f);
-                        }
-                        continue;
-                    }
-                    if (adx <= arch + 1.05f) pos += 0.9f; // carved window frame
-                }
-            }
-
-            menu_put(x, y, MM_STONE, menu_clampf(pos, 0.3f, 4.8f) * fall);
         }
     }
+    return L; // scale 0 => no logo
 }
 
-static void menu_build_towers(int side, float edge_in, float margin, float ground,
-                              float sky_top, float cx, float anim_t) {
-    if (margin < 4.0f) return;
-    MenuTower towers[24];
-    int n = 0;
-    float p = 1.5f;
-    int i = 0;
-    while (p < margin + 3.0f && n < 24) {
-        float h1 = menu_hash2(i * 7 + 3, side + 50);
-        float h2 = menu_hash2(i * 13 + 1, side + 91);
-        float h3 = menu_hash2(i * 5 + 11, side + 17);
-        float progress = menu_clampf(p / margin, 0.0f, 1.0f);
-        MenuTower t;
-        t.hw = menu_clampf(margin * 0.08f + 1.2f + h1 * 2.4f + progress * 1.6f, 1.6f, 6.8f);
-        t.tc = edge_in + (float)side * (p + t.hw * 0.4f);
-        float H = (ground - sky_top) * (0.40f + 0.42f * progress + 0.12f * h2);
-        t.yb = ground - H;
-        t.rh = t.hw * 2.5f;
-        t.needle = 2.0f + h3 * 3.0f;
-        t.window = (t.hw >= 2.0f && h3 > 0.30f) ? ((h2 > 0.45f) ? 1 : 2) : 0;
-        t.rose = (t.hw >= 4.0f);
-        t.facing = (float)(-side);
-        towers[n++] = t;
-        p += t.hw * 1.75f + 1.0f;
-        i++;
-    }
-    for (int k = n - 1; k >= 0; k--) {
-        menu_draw_tower(&towers[k], ground, cx, anim_t, false);
-    }
+static bool menu_font_px(int gi, int fx, int fy, bool narrow) {
+    static const int NARROW_MAP[6] = { 0, 2, 3, 4, 5, 7 };
+    int sx = narrow ? NARROW_MAP[fx] : fx;
+    return MENU_FONT[gi][fy][sx] == '#';
 }
 
-/* Planted Kiln greatsword: 2px blade, crossguard, grip, pommel */
-static void menu_draw_planted_sword(float bx, float by, float len, float ang, float cx) {
-    float dxv = sinf(ang), dyv = -cosf(ang);
-    float px = -dyv, py = dxv;
-    float lit = (bx < cx) ? 1.0f : -1.0f;
-    if (px * lit < 0.0f) { px = -px; py = -py; } // perp points toward the fire
-    int steps = (int)(len * 3.0f) + 4;
-    for (int i = 0; i <= steps; i++) {
-        float u = (float)i / (float)steps;
-        float d = u * len;
-        float x = bx + dxv * d, y = by + dyv * d;
-        if (u < 0.70f) {
-            menu_put((int)floorf(x + px * 0.5f), (int)floorf(y + py * 0.5f), MM_STEEL, 4.6f - u * 1.2f);
-            menu_put((int)floorf(x - px * 0.5f), (int)floorf(y - py * 0.5f), MM_STEEL, 1.4f);
-        } else if (u < 0.90f) {
-            menu_put((int)floorf(x), (int)floorf(y), MM_STEEL, 1.0f);
-        } else {
-            menu_put((int)floorf(x), (int)floorf(y), MM_STEEL, 4.2f);
-        }
-    }
-    float gx = bx + dxv * len * 0.70f, gy = by + dyv * len * 0.70f;
-    for (int k = -6; k <= 6; k++) {
-        float o = (float)k * 0.42f;
-        menu_put((int)floorf(gx + px * o), (int)floorf(gy + py * o), MM_STEEL, (o > 0.0f) ? 4.4f : 1.8f);
-    }
+static inline uint8_t menu_logo_at(int x, int y) {
+    if (x < 0 || x >= s_mcols || y < 0 || y >= s_mph) return 0;
+    return s_logo_mask[y][x];
 }
 
 static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
@@ -6922,299 +6854,145 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
     s_mph = ph;
     memset(s_menu_sub, 0, sizeof(s_menu_sub));
     memset(s_menu_glow, 0, sizeof(s_menu_glow));
+    memset(s_menu_tex, 0, sizeof(s_menu_tex));
+    memset(s_logo_mask, 0, sizeof(s_logo_mask));
 
-    float cx = (float)cols * 0.5f;
     int box_top_r = start_r - 1;
     int box_bot_r = start_r - 1 + box_h - 1;
     int box_left_c = start_c - 1;
     int box_right_c = start_c - 1 + box_w - 1;
-    float box_top_py = (float)(box_top_r * 2);
-    float box_bot_py = (float)((box_bot_r + 1) * 2);
-    float ground = (float)ph;
 
-    // ---- Ground crest profile (needed early so far skyline sits behind it) ----
-    float crest[MENU_MAX_COLS];
-    float avail = (float)ph - box_bot_py;
-    for (int x = 0; x < cols; x++) {
-        float u = ((float)x + 0.5f - cx) / (cx + 1.0f);
-        float h = avail * (0.36f + 0.30f * u * u)
-                + (menu_fbm2((float)x * 0.09f, 3.7f) - 0.5f) * 3.0f
-                + expf(-u * u * 40.0f) * menu_clampf(avail * 0.10f, 0.0f, 2.5f);
-        float c = (float)ph - h;
-        if (c < box_bot_py + 3.0f) c = box_bot_py + 3.0f;
-        if (avail < 6.0f) c = (float)ph - 1.0f;
-        crest[x] = c;
-    }
+    MenuLogoLayout LL = menu_logo_layout(cols, rows, box_h);
+    int k = LL.scale;
+    int lx0 = 0, lx1 = 0, ly0 = 0, lh = 0, ashen_x1 = 0;
+    int logo_top_r = box_top_r - 1 - LL.rows;
 
-    // ---- 1. Distant hazy skyline (semi-transparent ▓ silhouettes) ----
-    {
-        float x = -2.0f;
-        int i = 0;
-        while (x < (float)cols + 4.0f) {
-            float h1 = menu_hash2(i * 3 + 101, 7), h2 = menu_hash2(i * 11 + 5, 9);
-            MenuTower t;
-            t.hw = 1.4f + h1 * 1.8f;
-            t.tc = x;
-            t.yb = ground - (float)ph * (0.16f + 0.16f * h2);
-            t.rh = t.hw * 2.6f;
-            t.needle = 1.0f + h1 * 2.0f;
-            t.window = 0;
-            t.rose = 0;
-            t.facing = 1.0f;
-            menu_draw_tower(&t, ground, cx, anim_t, true);
-            x += t.hw * 2.0f + 4.0f + h2 * 6.0f;
-            i++;
-        }
-    }
+    if (k > 0 && logo_top_r >= 0) {
+        int lw = (LL.narrow ? 6 : 8) * k;
+        int gap = k, wgap = (LL.narrow ? 3 : 4) * k;
+        lh = 12 * k;
+        lx0 = (cols - LL.width) / 2;
+        lx1 = lx0 + LL.width - 1;
+        ly0 = logo_top_r * 2 + 1;
 
-    // ---- 2. Near cathedral towers flanking the menu ----
-    float sky_top = 1.0f;
-    menu_build_towers(-1, (float)box_left_c - 0.5f, (float)box_left_c, ground, sky_top, cx, anim_t);
-    menu_build_towers(+1, (float)box_right_c + 1.5f, (float)(cols - 1 - box_right_c), ground, sky_top, cx, anim_t);
-
-    // Chiseled rim light (toward the fire) + razor outline (away from it)
-    for (int y = 0; y < ph; y++) {
-        for (int x = 0; x < cols; x++) {
-            MenuSubPx *p = &s_menu_sub[y][x];
-            if (p->mat != MM_STONE) continue;
-            int dir = ((float)x < cx) ? 1 : -1;
-            uint8_t in_m = menu_mat_at(x + dir, y);
-            uint8_t out_m = menu_mat_at(x - dir, y);
-            uint8_t up_m = menu_mat_at(x, y - 1);
-            float fall = menu_clampf(1.0f - (fabsf((float)x - cx) - 30.0f) / 60.0f, 0.4f, 1.0f);
-            bool in_open = (in_m == MM_NONE || in_m == MM_FAR);
-            bool out_open = (out_m == MM_NONE || out_m == MM_FAR);
-            bool up_open = (up_m == MM_NONE || up_m == MM_FAR);
-            if (in_open) {
-                p->pos = 4.6f + 2.2f * fall;
-            } else if (up_open) {
-                p->pos = fmaxf(p->pos, 3.4f + 1.6f * fall);
-            } else if (out_open) {
-                p->pos = 0.0f;
-            } else {
-                uint8_t in2 = menu_mat_at(x + dir * 2, y);
-                if (in2 == MM_NONE || in2 == MM_FAR) p->pos = fmaxf(p->pos, 3.0f + 1.4f * fall);
-            }
-        }
-    }
-
-    // ---- 3. Darksign eclipse with ragged corona and bleeding drip ----
-    if (box_top_r >= 5) {
-        float ds_r = menu_clampf(box_top_py * 0.30f, 3.5f, 9.0f);
-        float ds_cy = menu_clampf(box_top_py * 0.46f, ds_r + 1.5f, box_top_py - ds_r - 2.0f);
-        float r_out = ds_r * 2.4f;
-        int x0 = (int)floorf(cx - r_out), x1 = (int)ceilf(cx + r_out);
-        int yend = (int)box_top_py;
-        for (int y = 0; y < yend; y++) {
-            for (int x = x0; x <= x1; x++) {
-                float dx = (float)x + 0.5f - cx;
-                float dy = (float)y + 0.5f - ds_cy;
-                float r = sqrtf(dx * dx + dy * dy);
-                float rn = r / ds_r;
-                if (rn < 0.64f) {
-                    menu_put(x, y, MM_VOID, (rn > 0.54f) ? 1.0f : 0.0f);
-                } else if (rn < 1.0f) {
-                    float n = menu_vnoise2(dx * 0.7f + anim_t * 1.3f, dy * 0.7f);
-                    menu_put(x, y, MM_FIRE, 7.0f - 3.0f * ((rn - 0.64f) / 0.36f) + (n - 0.5f) * 0.8f);
-                } else if (r < r_out) {
-                    float ux = dx / (r + 0.001f), uy = dy / (r + 0.001f);
-                    float n = menu_fbm2(ux * 1.9f + 10.0f, uy * 1.9f + 10.0f - anim_t * 0.9f);
-                    float n2 = menu_vnoise2(r * 0.55f - anim_t * 3.2f, (ux + uy) * 3.0f + 40.0f);
-                    float L = ds_r * (0.22f + 1.15f * n * n) * (1.0f + 0.30f * fmaxf(0.0f, -uy));
-                    float f = 1.0f - (r - ds_r) / L + (n2 - 0.5f) * 0.55f;
-                    if (f > 0.0f) menu_put(x, y, MM_FIRE, menu_clampf(0.6f + f * 4.8f, 0.0f, 6.4f));
-                }
-            }
-        }
-        // Drips: one thick central stream + two thin side trickles
-        float dtop = ds_cy + ds_r * 0.80f;
-        for (int k = 0; k < 3; k++) {
-            float off = (k == 0) ? 0.0f : ((k == 1) ? -ds_r * 0.48f : ds_r * 0.44f);
-            float dlen = (box_top_py - dtop) * ((k == 0) ? 1.0f : 0.45f + 0.1f * (float)k);
-            float w0 = (k == 0) ? ds_r * 0.24f + 0.4f : 0.55f;
-            for (int y = (int)dtop; y < (int)(dtop + dlen) && y < yend; y++) {
-                float t = ((float)y - dtop) / (dlen + 0.01f);
-                float sway = sinf((float)y * 0.55f - anim_t * 3.0f + (float)k) * 0.5f * t;
-                float w = w0 * (1.0f - 0.45f * t);
-                for (int x = (int)floorf(cx + off - w - 1.0f); x <= (int)ceilf(cx + off + w + 1.0f); x++) {
-                    float dd = fabsf((float)x + 0.5f - (cx + off + sway));
-                    if (dd <= w + 0.15f) {
-                        menu_put(x, y, MM_FIRE, 6.6f - 3.2f * (dd / (w + 0.2f)) - 1.6f * t);
+        // ---- Rasterize the text mask (1 = ASHEN, 2 = HOUR) ----
+        int x = lx0;
+        int word = 1;
+        for (const char *p = MENU_LOGO_TEXT; *p; p++) {
+            if (*p == ' ') { ashen_x1 = x - 1; x += wgap; word = 2; continue; }
+            if (p != MENU_LOGO_TEXT && p[-1] != ' ') x += gap;
+            int gi = menu_font_index(*p);
+            if (gi >= 0) {
+                for (int py = 0; py < lh; py++) {
+                    for (int px = 0; px < lw; px++) {
+                        if (menu_font_px(gi, px / k, py / k, LL.narrow)) {
+                            int X = x + px, Y = ly0 + py;
+                            if (X >= 0 && X < cols && Y >= 0 && Y < ph) s_logo_mask[Y][X] = (uint8_t)word;
+                        }
                     }
                 }
             }
+            x += lw;
         }
-        // Corona glow in the transparent sky around the eclipse
-        for (int r = 0; r < box_top_r && r < rows; r++) {
-            for (int c = (int)(cx - r_out * 1.9f); c <= (int)(cx + r_out * 1.9f); c++) {
-                float dx = (float)c + 0.5f - cx;
-                float dy = (float)(r * 2 + 1) - ds_cy;
-                float d = sqrtf(dx * dx + dy * dy);
-                float g = expf(-powf(fmaxf(0.0f, d - ds_r * 1.2f) / (ds_r * 0.95f), 2.0f));
-                menu_glow_add(c, r, rows, 0.42f * g);
-            }
-        }
-    }
 
-    // ---- 4. Kiln ash ground with ember fissures ----
-    if (avail >= 6.0f) {
-        for (int x = 0; x < cols; x++) {
-            float u = fabsf(((float)x + 0.5f - cx) / (cx + 1.0f));
-            float heat = expf(-u * u * 5.5f);
-            int yc = (int)floorf(crest[x]);
-            for (int y = yc; y < ph; y++) {
-                float d = (float)(y - yc);
-                float tex = (menu_fbm2((float)x * 0.33f, (float)y * 0.55f) - 0.5f) * 1.5f;
-                float crack = fabsf(menu_vnoise2((float)x * 0.16f + 4.0f, (float)y * 0.38f) - 0.5f);
-                float pulse = 0.82f + 0.18f * sinf(anim_t * 3.0f + (float)x * 0.21f);
-                if (d >= 2.0f && crack < 0.012f + 0.026f * heat) {
-                    menu_put(x, y, MM_FIRE, (1.6f + 2.6f * heat) * pulse - d * 0.06f);
-                } else if (d < 1.0f) {
-                    menu_put(x, y, MM_ASH, 3.4f + 2.6f * heat);
+        // Slow diagonal light sweep across the letters
+        float sweep_period = (float)(LL.width + 60);
+        float sweep = fmodf(anim_t * 26.0f, sweep_period) - 20.0f;
+
+        // ---- Shade letters, outline and drop shadow ----
+        for (int y = ly0 - 2; y <= ly0 + lh + 3; y++) {
+            for (int X = lx0 - 3; X <= lx1 + 4; X++) {
+                if (X < 0 || X >= cols || y < 0 || y >= ph) continue;
+                uint8_t m = s_logo_mask[y][X];
+                if (m) {
+                    float v = (float)(y - ly0) / (float)(lh - 1);
+                    bool up = !menu_logo_at(X, y - 1), left = !menu_logo_at(X - 1, y);
+                    bool down = !menu_logo_at(X, y + 1), right = !menu_logo_at(X + 1, y);
+                    bool hi = up || left;
+                    bool lo = (down || right) && !hi;
+                    bool hi2 = !hi && !lo && (!menu_logo_at(X - 2, y) || !menu_logo_at(X, y - 2));
+                    float sw = (float)(X - lx0) + (float)(y - ly0) * 0.6f - sweep;
+                    float shine = (fabsf(sw) < 2.5f) ? (1.0f - fabsf(sw) / 2.5f) : 0.0f;
+
+                    if (m == 1) {
+                        float pos = 6.3f - 4.4f * v;
+                        if (hi) pos = 7.3f - 1.6f * v;
+                        else if (lo) pos -= 1.9f;
+                        else if (hi2) pos += 0.6f;
+                        // Cooled crust cracks across the molten letters
+                        float cr = fabsf(menu_vnoise2((float)X * 0.30f / (float)k, (float)y * 0.45f / (float)k) - 0.5f);
+                        if (!hi && !lo && cr < 0.028f) pos = 1.2f + v * 0.4f;
+                        pos += shine * 2.2f;
+                        menu_put(X, y, MM_FIRE, menu_clampf(pos, 0.0f, 7.0f));
+                    } else {
+                        float pulse = 0.85f + 0.15f * sinf(anim_t * 2.6f + (float)X * 0.35f);
+                        if (v > 0.80f && !hi) {
+                            // Embers smouldering at the foot of the ash letters
+                            float e = (v - 0.80f) / 0.20f;
+                            menu_put(X, y, MM_FIRE, (2.6f + 2.6f * e) * pulse - (lo ? 1.0f : 0.0f));
+                        } else {
+                            float pos = 4.5f - 2.6f * v;
+                            if (hi) pos = 5.3f - 0.8f * v;
+                            else if (lo) pos -= 1.5f;
+                            else if (hi2) pos += 0.5f;
+                            pos += shine * 1.6f;
+                            if (!hi && !lo && menu_hash2(X / k, y / k) < 0.035f) {
+                                menu_put(X, y, MM_FIRE, 4.0f * pulse);
+                            } else {
+                                menu_put(X, y, MM_STEEL, menu_clampf(pos, 0.0f, 5.0f));
+                            }
+                        }
+                    }
                 } else {
-                    float pos = (4.2f - d * 0.32f) * (0.55f + 0.45f * heat) + tex;
-                    menu_put(x, y, MM_ASH, menu_clampf(pos, 0.0f, 5.5f));
-                }
-            }
-        }
-
-        // Planted greatswords
-        float sw_len = menu_clampf(avail * 0.48f, 5.0f, 12.0f);
-        static const float offs[4] = { -0.62f, -0.34f, 0.36f, 0.64f };
-        static const float angs[4] = { -0.30f, 0.20f, -0.22f, 0.32f };
-        static const float scl[4]  = { 1.05f, 0.85f, 0.88f, 1.08f };
-        for (int k = 0; k < 4; k++) {
-            float sx = cx + offs[k] * cx;
-            int isx = (int)sx;
-            if (isx < 1 || isx >= cols - 1) continue;
-            float by = crest[isx] + 1.5f;
-            float len = sw_len * scl[k];
-            if (by - len < box_bot_py + 1.0f) len = by - (box_bot_py + 1.0f);
-            if (len >= 4.5f) menu_draw_planted_sword(sx, by, len, angs[k], cx);
-        }
-
-        // ---- 5. The bonfire: bone mound, skulls, coiled sword, living flames ----
-        int icx = (int)cx;
-        float base = crest[icx] + 1.0f;
-        float L = menu_clampf(base - box_bot_py - 2.0f, 5.0f, 16.0f);
-        float fw = menu_clampf(L * 0.52f, 4.0f, 8.0f);
-
-        // Bone mound
-        float mrx = fw * 1.25f, mry = menu_clampf(L * 0.28f, 2.0f, 4.0f);
-        for (int y = (int)(base - mry - 1.0f); y <= (int)(base + 1.0f); y++) {
-            for (int x = (int)(cx - mrx - 1.0f); x <= (int)(cx + mrx + 1.0f); x++) {
-                float nx = ((float)x + 0.5f - cx) / mrx;
-                float ny = ((float)y + 0.5f - base) / mry;
-                float lump = (menu_vnoise2((float)x * 0.9f, (float)y * 0.9f) - 0.5f) * 0.5f;
-                if (ny <= 0.6f && nx * nx + ny * ny <= 1.0f + lump) {
-                    float pos = 2.6f - ny * 1.2f - fabsf(nx) * 1.0f + lump * 2.0f;
-                    menu_put(x, y, MM_BONE, menu_clampf(pos, 0.0f, 4.0f));
-                }
-            }
-        }
-        // Skulls with hollow sockets
-        static const float sk[3][2] = { {-0.62f, -0.55f}, {0.58f, -0.40f}, {-0.05f, -0.85f} };
-        float skr = menu_clampf(mry * 0.75f, 1.6f, 2.8f);
-        for (int k = 0; k < 3; k++) {
-            float scx = cx + sk[k][0] * mrx, scy = base + sk[k][1] * mry;
-            for (int y = (int)(scy - skr - 1.0f); y <= (int)(scy + skr + 1.0f); y++) {
-                for (int x = (int)(scx - skr - 1.0f); x <= (int)(scx + skr + 1.0f); x++) {
-                    float dx = (float)x + 0.5f - scx, dy = (float)y + 0.5f - scy;
-                    if (dx * dx + dy * dy <= skr * skr) {
-                        float pos = 3.6f - (dy / skr) * 0.9f - ((dx * ((scx < cx) ? -1.0f : 1.0f)) / skr) * 0.6f;
-                        bool eye = (fabsf(dy - skr * 0.05f) < 0.6f) && (fabsf(fabsf(dx) - skr * 0.42f) < 0.55f);
-                        menu_put(x, y, eye ? MM_VOID : MM_BONE, eye ? 0.0f : menu_clampf(pos, 1.0f, 4.0f));
+                    bool near = false;
+                    for (int dy = -1; dy <= 1 && !near; dy++)
+                        for (int dx = -1; dx <= 1 && !near; dx++)
+                            if (menu_logo_at(X + dx, y + dy)) near = true;
+                    bool shadow = menu_logo_at(X - 2, y - 2) || menu_logo_at(X - 1, y - 1)
+                               || menu_logo_at(X - 2, y - 1) || menu_logo_at(X - 1, y - 2);
+                    if (near) {
+                        menu_put(X, y, MM_STONE, 1.7f);
+                    } else if (shadow) {
+                        menu_put(X, y, MM_STONE, 0.3f);
                     }
                 }
             }
         }
 
-        // Coiled sword
-        float ang = 0.07f;
-        float dxv = sinf(ang), dyv = -cosf(ang);
-        int steps = (int)(L * 4.0f) + 6;
-        for (int i = 0; i <= steps; i++) {
-            float u = (float)i / (float)steps;
-            float d = u * L;
-            float x = cx + dxv * d, y = base + 0.5f + dyv * d;
-            if (u < 0.68f) {
-                bool hot = u < 0.26f;
-                uint8_t m = hot ? MM_FIRE : MM_STEEL;
-                float pl = hot ? 6.2f - u * 4.0f : 4.8f;
-                float ps = hot ? 3.4f - u * 3.0f : 1.6f;
-                menu_put((int)floorf(x - 0.5f), (int)floorf(y), m, ps);
-                menu_put((int)floorf(x + 0.5f), (int)floorf(y), m, pl);
-                // Spiral coil wrapping the blade
-                float ph_c = d * 1.25f - anim_t * 0.0f;
-                float co = sinf(ph_c) * 1.6f;
-                if (cosf(ph_c) > 0.0f) {
-                    menu_put((int)floorf(x + co), (int)floorf(y), hot ? MM_FIRE : MM_STEEL,
-                             hot ? 6.8f : (co > 0.0f ? 5.0f : 3.0f));
+        // ---- aCode-style ░ block texture hugging the logo ----
+        int tr0 = logo_top_r - 2, tr1 = logo_top_r + LL.rows + 1;
+        int tc0 = lx0 - 10, tc1 = lx1 + 10;
+        for (int r = tr0; r <= tr1; r++) {
+            if (r < 0 || r >= rows || r >= box_top_r) continue;
+            for (int c = tc0; c <= tc1; c++) {
+                if (c < 0 || c >= cols) continue;
+                float dx = (c < lx0) ? (float)(lx0 - c) : ((c > lx1) ? (float)(c - lx1) : 0.0f);
+                float dy = (r < logo_top_r) ? (float)(logo_top_r - r) : ((r > logo_top_r + LL.rows - 1) ? (float)(r - (logo_top_r + LL.rows - 1)) : 0.0f);
+                float d = dx * 0.18f + dy * 0.55f;
+                float h = menu_hash2(c / 2 + 300, r + 77);
+                if (h > 0.30f + d * 0.55f) {
+                    s_menu_tex[r][c] = (h > 0.88f - d * 0.1f && d < 0.6f) ? 2.0f : 1.0f;
                 }
-            } else if (u < 0.88f) {
-                menu_put((int)floorf(x), (int)floorf(y), MM_STEEL, 1.0f);
-            } else {
-                menu_put((int)floorf(x - 0.5f), (int)floorf(y), MM_STEEL, 2.8f);
-                menu_put((int)floorf(x + 0.5f), (int)floorf(y), MM_STEEL, 4.8f);
-            }
-        }
-        {
-            float gx = cx + dxv * L * 0.68f, gy = base + 0.5f + dyv * L * 0.68f;
-            for (int k = -8; k <= 8; k++) {
-                float o = (float)k * 0.42f;
-                float droop = fabsf(o) * fabsf(o) * 0.12f;
-                menu_put((int)floorf(gx + o), (int)floorf(gy + droop), MM_STEEL, (o > 0.0f) ? 4.6f : 2.0f);
             }
         }
 
-        // Living flames licking up around the sword
-        float Hmax = L * 0.58f;
-        for (int y = (int)(base - Hmax - 2.0f); y <= (int)base; y++) {
-            for (int x = (int)(cx - fw - 1.0f); x <= (int)(cx + fw + 1.0f); x++) {
-                float dx = (float)x + 0.5f - cx;
-                float env = 1.0f - (dx / fw) * (dx / fw);
-                if (env <= 0.0f) continue;
-                float yr = (base - (float)y) / Hmax;
-                float n = menu_fbm2((float)x * 0.42f, (float)y * 0.30f + anim_t * 5.5f);
-                float f = env * (1.0f - yr) * 1.3f + (n - 0.5f) * 1.0f - 0.12f;
-                if (f <= 0.04f) continue;
-                uint8_t cur = menu_mat_at(x, y);
-                if ((cur == MM_STEEL || cur == MM_FIRE) && f < 0.55f) continue;
-                if (cur == MM_VOID || (cur == MM_BONE && f < 0.35f)) continue;
-                menu_put(x, y, MM_FIRE, menu_clampf(1.2f + f * 5.4f, 0.0f, 7.0f));
-            }
-        }
-
-        // Warm halo around the bonfire (transparent cells)
-        float hcy = base - Hmax * 0.5f;
-        for (int r = box_bot_r + 1; r < rows; r++) {
-            for (int c = (int)(cx - fw * 3.5f); c <= (int)(cx + fw * 3.5f); c++) {
-                float dx = (float)c + 0.5f - cx;
-                float dy = (float)(r * 2 + 1) - hcy;
-                float d = sqrtf(dx * dx + dy * dy);
-                menu_glow_add(c, r, rows, 0.50f * expf(-(d * d) / (fw * fw * 2.2f)));
-            }
-        }
-
-        // Rising embers from the bonfire
-        for (int i = 0; i < 26; i++) {
-            float sx = menu_hash2(i * 17 + 1, 33);
-            float st = menu_hash2(i * 29 + 7, 71);
-            float sp = 0.10f + 0.12f * menu_hash2(i * 41 + 3, 97);
+        // Embers drifting up out of the molten letters
+        int span = ashen_x1 - lx0 + 1;
+        for (int i = 0; i < 18 && span > 0; i++) {
+            float sx = menu_hash2(i * 17 + 5, 401);
+            float st = menu_hash2(i * 29 + 3, 503);
+            float sp = 0.14f + 0.16f * menu_hash2(i * 43 + 9, 607);
             float life = fmodf(anim_t * sp + st, 1.0f);
-            float ex = cx + (sx - 0.5f) * fw * 1.6f + sinf(anim_t * 1.8f + st * 20.0f) * 3.0f * life
-                     + (sx - 0.5f) * life * (float)cols * 0.5f;
-            float ey = base - Hmax * 0.4f - life * (float)ph;
-            int ix = (int)floorf(ex), iy = (int)floorf(ey);
-            if (menu_mat_at(ix, iy) != MM_NONE) continue;
+            int ex = lx0 + (int)(sx * (float)span) + (int)lroundf(sinf(anim_t * 1.9f + st * 21.0f) * 2.0f * life);
+            int ey = ly0 - 1 - (int)(life * (float)(ly0 + 2));
+            if (menu_mat_at(ex, ey) != MM_NONE || menu_logo_at(ex, ey)) continue;
             float fade = 1.0f - life;
-            menu_put(ix, iy, MM_FIRE, 4.0f + 3.0f * fade);
-            if (menu_mat_at(ix, iy + 1) == MM_NONE && fade > 0.5f) menu_put(ix, iy + 1, MM_FIRE, 2.0f + fade);
+            if (fade > 0.12f) menu_put(ex, ey, MM_FIRE, 3.0f + 4.0f * fade);
         }
     }
 
-    // Drifting embers across the whole sky
-    for (int i = 0; i < 22; i++) {
+    // Sparse embers across the rest of the screen
+    for (int i = 0; i < 16; i++) {
         float sx = menu_hash2(i * 19 + 3, 101);
         float st = menu_hash2(i * 23 + 7, 211);
         float sp = 0.04f + 0.05f * menu_hash2(i * 31 + 11, 307);
@@ -7226,14 +7004,7 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         if (fade > 0.25f) menu_put(ix, iy, MM_FIRE, 2.5f + 3.5f * fade);
     }
 
-    // Heat bleeding onto the menu edges
-    for (int dc = -14; dc <= 14; dc++) {
-        float fo = 1.0f - fabsf((float)dc) / 15.0f;
-        float br = 0.85f + 0.15f * sinf(anim_t * 3.0f + (float)dc * 0.3f);
-        menu_glow_add((int)cx + dc, box_bot_r + 1, rows, 0.30f * fo * br);
-    }
-
-    // ---- 6. Quantize to ANSI cells and emit ----
+    // ---- Quantize to ANSI cells and emit ----
     static const char *GLYPHS[7] = { " ", "░", "▒", "▓", "█", "▀", "▄" };
     static const float BAYER4[4][4] = {
         { 0.03f, 0.53f, 0.16f, 0.66f },
@@ -7241,9 +7012,10 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         { 0.19f, 0.69f, 0.06f, 0.56f },
         { 0.94f, 0.44f, 0.81f, 0.31f }
     };
+    static const RGB TEX_RGB[3] = { {0, 0, 0}, {62, 54, 70}, {92, 80, 96} };
 
     int len = 0;
-    int cur_fg = -1, cur_bg = -2; // packed RGB, -1 = transparent bg
+    int cur_fg = -1, cur_bg = -2;
     for (int r = 0; r < rows; r++) {
         int max_c = (r == rows - 1) ? (cols - 1) : cols;
         bool positioned = false;
@@ -7268,24 +7040,14 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
                 float g = menu_clampf(s_menu_glow[r][c], 0.0f, 1.0f);
                 int lvl = (int)floorf(g * 3.0f + BAYER4[r & 3][c & 3]);
                 if (lvl > 3) lvl = 3;
-                if (lvl <= 0 || g < 0.04f) {
-                    cell.glyph = 0;
-                } else {
+                if (lvl > 0 && g >= 0.04f) {
                     static const int fire_idx[4] = { 0, 2, 3, 5 };
                     cell.glyph = (uint8_t)lvl;
                     cell.fg = MENU_RAMP_FIRE[fire_idx[lvl]];
-                }
-            } else if (tp->mat == MM_FAR || bp->mat == MM_FAR) {
-                if (tp->mat == MM_FAR && bp->mat == MM_FAR) {
-                    cell.glyph = 3;
-                    cell.fg = MENU_RAMP_FAR[(it > ib) ? it : ib];
-                } else if (tp->mat == MM_NONE || bp->mat == MM_NONE) {
-                    cell.glyph = (tp->mat == MM_FAR) ? 5 : 6;
-                    cell.fg = MENU_RAMP_FAR[0];
-                } else if (tp->mat == MM_FAR) {
-                    cell.glyph = 6; cell.fg = rb[ib]; cell.has_bg = 1; cell.bg = MENU_RAMP_FAR[it];
-                } else {
-                    cell.glyph = 5; cell.fg = rt[it]; cell.has_bg = 1; cell.bg = MENU_RAMP_FAR[ib];
+                } else if (s_menu_tex[r][c] > 0.0f) {
+                    int t = (int)s_menu_tex[r][c];
+                    cell.glyph = 1;
+                    cell.fg = TEX_RGB[t];
                 }
             } else if (tp->mat == MM_NONE) {
                 cell.glyph = 6; cell.fg = rb[ib];
@@ -7370,7 +7132,10 @@ static bool run_setup_menu(void) {
 
         int box_w = 66;
         int box_h = 17;
-        int start_r = (g_term_rows - box_h) / 2 + 1;
+        // Stack the ASHEN HOUR logo above the box when there is room
+        MenuLogoLayout logo_l = menu_logo_layout(g_term_cols, g_term_rows, box_h);
+        int logo_block = (logo_l.scale > 0) ? (logo_l.rows + 1) : 0;
+        int start_r = (g_term_rows - box_h - logo_block) / 2 + 1 + logo_block;
         if (start_r < 1) start_r = 1;
         int start_c = (g_term_cols - box_w) / 2 + 1;
         if (start_c < 1) start_c = 1;

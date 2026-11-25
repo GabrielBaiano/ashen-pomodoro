@@ -6681,41 +6681,42 @@ static const char *MENU_ASHEN_ART[MENU_LOGO_PH] = {
     ".................................................................................................."
 };
 
-// Slender Kiln-of-the-First-Flame charred root columns ('#' = charred root, '*' = burning ember knot)
+// Hybrid slender gothic .NFO forged-iron & burning Kiln root columns
+// ('#' = forged dark iron/root, '*' = burning ember knot, '+' = bright chrome NFO corner star)
 static const char *MENU_NFO_HALF[MENU_NFO_PH] = {
-    "......##..#............................",
-    "....##..##...##........................",
-    "...##...*.....##.......................",
-    "..##..##...............................",
+    "....####.......###.....................",
+    "..#######.....#####....................",
+    ".###...###...##..##....................",
+    "###.....##..*#.........................",
+    ".##......####..........................",
+    "..###....##............................",
+    "...###.................................",
+    "..#*.##................................",
     "..##.##................................",
     "...###.................................",
-    "...##.#................................",
-    "..#*..##...............................",
+    "...###.................................",
+    "..##.##................................",
+    ".###.##................................",
+    "..#*###................................",
     "..##.##................................",
     "...###.................................",
-    "....##.................................",
-    "...##.#................................",
-    "..##..##...............................",
-    "..#*..##...............................",
-    "...##.#................................",
-    "....##.................................",
-    "...##..................................",
-    "..##.#.................................",
+    "...###.................................",
+    "..##.##................................",
     "..#.*#.................................",
     "...###.................................",
-    "...##.#................................",
-    "..##..##...............................",
-    "..#*..###..............................",
-    ".##....##.#............................",
-    "..##..##...............................",
-    "...####................................",
-    "...##.##...............................",
-    "..##...##..............................",
-    ".##.....##.............................",
-    ".#.......#.............................",
-    ".......................................",
-    ".......................................",
-    ".......................................",
+    "...##....###...........................",
+    "..###..######..........................",
+    ".#*..###...###.........................",
+    "###...##....##.........................",
+    ".###..##...............................",
+    "..####.................................",
+    "..###..................................",
+    "..##...................................",
+    ".##....+...............................",
+    ".##...+++..............................",
+    ".#...+++++.............................",
+    ".#....+++..............................",
+    ".......+...............................",
     "......................................."
 };
 
@@ -7093,13 +7094,22 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
             }
         }
 
-        // Shade charred ash-wood bark + glowing internal ember veins near '*' knots
+        // Shade hybrid forged dark-steel gothic scrolls + glowing ember veins + bright chrome corner stars
+        float nfo_sweep = fmodf(anim_t * 20.0f, 160.0f) - 30.0f;
         for (int ay = 0; ay < MENU_NFO_PH; ay++) {
             for (int ax = 0; ax < MENU_NFO_W; ax++) {
                 char mc = menu_nfo_char(ax, ay);
                 if (mc == '.') continue;
                 int x = nx0 + ax, y = ny0 + ay;
                 if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
+
+                if (mc == '+') {
+                    // Gleaming chrome 4-point .NFO corner star
+                    bool core = (menu_nfo_char(ax - 1, ay) == '+' && menu_nfo_char(ax + 1, ay) == '+') ||
+                                (menu_nfo_char(ax, ay - 1) == '+' && menu_nfo_char(ax, ay + 1) == '+');
+                    menu_put(x, y, MM_CHROME, core ? 6.0f : 4.6f);
+                    continue;
+                }
 
                 // Measure proximity to nearest burning ember knot '*'
                 float min_knot = 9.0f;
@@ -7112,28 +7122,36 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
                     }
                 }
 
-                // Independent organic flicker per side so left & right root flames feel alive
+                // Independent organic flicker per side so left & right flames feel alive
                 float side_phase = (ax < MENU_NFO_HALF_W) ? 0.0f : 7.3f;
                 float n = menu_vnoise2((float)ax * 0.55f + side_phase, (float)ay * 0.45f - anim_t * 2.4f);
                 float pulse = 0.78f + 0.22f * sinf(anim_t * 3.8f + (float)ay * 0.45f + side_phase);
 
                 if (mc == '*') {
                     menu_put(x, y, MM_FIRE, menu_clampf(5.6f + 1.2f * n * pulse, 4.4f, 6.9f));
-                } else if (min_knot < 2.15f && (min_knot < 1.35f || n > 0.42f)) {
-                    // Glowing ember fissures spreading through charred bark around each burning knot
-                    float heat = (1.0f - min_knot / 2.25f) * (3.8f + 1.6f * n) * pulse;
-                    menu_put(x, y, MM_FIRE, menu_clampf(0.8f + heat, 0.8f, 5.4f));
+                } else if (min_knot < 2.05f && (min_knot < 1.30f || n > 0.44f)) {
+                    // Glowing ember fissures spreading through the dark iron/root around each burning knot
+                    float heat = (1.0f - min_knot / 2.15f) * (3.7f + 1.5f * n) * pulse;
+                    menu_put(x, y, MM_FIRE, menu_clampf(0.8f + heat, 0.8f, 5.3f));
                 } else {
-                    // Charred dark ash-wood bark with fine grain and subtle warm rim facing inward
+                    // Forged dark-steel gothic iron (bridging ASHEN's chrome with charred Kiln texture)
                     bool up    = !menu_nfo_solid(ax, ay - 1);
+                    bool left  = !menu_nfo_solid(ax - 1, ay);
                     bool down  = !menu_nfo_solid(ax, ay + 1);
-                    float grain = menu_vnoise2((float)ax * 0.65f, (float)ay * 0.25f);
-                    float pos = 1.6f + 1.5f * grain;
-                    if (up)   pos += 0.85f;
-                    if (down) pos -= 0.55f;
-                    // Bottom center thread stays sleek dark ash-steel
-                    if (ay == 25 && ax >= 20 && ax < MENU_NFO_W - 20) pos = 1.8f + 0.8f * grain;
-                    menu_put(x, y, MM_ASH, menu_clampf(pos, 0.4f, 4.0f));
+                    bool right = !menu_nfo_solid(ax + 1, ay);
+                    float v = (float)ay / (float)(MENU_NFO_PH - 1);
+                    float grain = menu_vnoise2((float)ax * 0.45f, (float)ay * 0.22f);
+                    float pos = 3.25f - 0.75f * sinf(v * (float)M_PI * 2.0f) + (grain - 0.5f) * 0.55f;
+                    if (up)                 pos += 1.05f;
+                    else if (left && !down) pos += 0.40f;
+                    if (down && right)      pos -= 0.70f;
+                    else if (down)          pos -= 0.40f;
+                    // Subtle synchronized sheen gliding across the forged iron scrolls
+                    float sw = ((float)ax + (float)ay * 0.55f) - nfo_sweep;
+                    if (fabsf(sw) < 2.4f) {
+                        pos += 1.15f * (1.0f - fabsf(sw) / 2.4f);
+                    }
+                    menu_put(x, y, MM_CHROME, menu_clampf(pos, 1.0f, 5.2f));
                 }
             }
         }
@@ -7204,9 +7222,11 @@ static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
         bool positioned = false;
         for (int c = 0; c < max_c; c++) {
             // Skip interior text rows so menu text is never overwritten by spaces before redraw (zero flicker)
-            if (c >= text_c0 && c <= text_c1 &&
-                (r == box_top_r + 1 || (r >= box_top_r + 3 && r <= box_top_r + 9) ||
-                 r == box_top_r + 11 || r == box_top_r + 12 || r == box_top_r + 14)) {
+            bool skip_header = (r == box_top_r + 1 && c >= box_left_c + 20 && c <= box_left_c + MENU_NFO_W - 21);
+            bool skip_body   = (c >= text_c0 && c <= text_c1 &&
+                                ((r >= box_top_r + 3 && r <= box_top_r + 9) ||
+                                 r == box_top_r + 11 || r == box_top_r + 12 || r == box_top_r + 14));
+            if (skip_header || skip_body) {
                 positioned = false;
                 continue;
             }
@@ -7399,10 +7419,10 @@ static bool run_setup_menu(void) {
                                          start_r, start_c, box_w, box_h,
                                          menu_anim_t);
 
-        // Transparent .NFO Header (padded across interior text band so no stale chars remain)
+        // Transparent .NFO Header (padded across cols 20..57 so top baroque scrolls connect cleanly)
         len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
-            "\033[%d;%dH\033[49m                \033[1;38;2;224;228;240mS E S S I O N   S E T U P\033[0;49m                 \033[0m",
-            start_r + 1, start_c + 10);
+            "\033[%d;%dH\033[49m      \033[1;38;2;224;228;240mS E S S I O N   S E T U P\033[0;49m       \033[0m",
+            start_r + 1, start_c + 20);
 
         // Prepare values for the 7 .NFO dot-leader rows
         const char *style_str = (style == 2) ? "Bloodborne Hunter's Lamp" :

@@ -1093,7 +1093,7 @@ static void update_ambient_audio(void) {
 
 static void reset_terminal(void) {
     stop_ambient_sound();
-    safe_write(STDOUT_FILENO, "\033[?1000l\033[?1002l\033[?1006l\033[?2004l\033[?1049l\033[?25h\033[0m\n", 37);
+    safe_write(STDOUT_FILENO, "\033[?2004l\033[?1049l\033[?25h\033[0m\n", 27);
     tcsetattr(STDIN_FILENO, TCSANOW, &g_orig_termios);
 }
 
@@ -1122,7 +1122,7 @@ static void setup_terminal(void) {
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGWINCH, &sa, NULL);
 
-    safe_write(STDOUT_FILENO, "\033[?1049h\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[?2004h\033[2J", 35);
+    safe_write(STDOUT_FILENO, "\033[?1049h\033[?25l\033[?2004h\033[2J", 26);
 }
 
 static void update_dimensions(void) {
@@ -6203,8 +6203,6 @@ static void stir_fire_sparks(int count) {
 
 static void handle_input(void) {
     char ch;
-    static int s_last_mouse_x = -1, s_last_mouse_y = -1;
-    static bool s_mouse_dragging = false;
 
     while (read(STDIN_FILENO, &ch, 1) > 0) {
         if (ch == '\033') {
@@ -6224,7 +6222,7 @@ static void handle_input(void) {
                     continue;
                 }
 
-                // If modal is active, suppress arrow navigation and mouse interaction
+                // If modal is active, suppress arrow navigation
                 if (g_modal_active != MODAL_NONE) {
                     continue;
                 }
@@ -6239,63 +6237,6 @@ static void handle_input(void) {
                     g_cam_yaw += 0.08f;
                 } else if (seq[1] == 'D') { // Left arrow -> yaw left
                     g_cam_yaw -= 0.08f;
-                } else if (seq[1] == '<') {
-                    // SGR mouse event: \033[<btn;col;rowM or m
-                    int btn = 0, mx = 0, my = 0;
-                    char mode = 'M';
-                    if (sscanf(seq + 2, "%d;%d;%d%c", &btn, &mx, &my, &mode) >= 3) {
-                        if (mode == 'M') {
-                            if (btn == 1) { // Middle click -> Toggle 360 Turntable Orbit!
-                                g_auto_turntable = !g_auto_turntable;
-                            } else if (btn == 0) { // Left click down
-                                s_mouse_dragging = true;
-                                s_last_mouse_x = mx;
-                                s_last_mouse_y = my;
-                            } else if (btn == 32) { // Left drag motion
-                                if (s_mouse_dragging && s_last_mouse_x >= 0 && s_last_mouse_y >= 0) {
-                                    int dx = mx - s_last_mouse_x;
-                                    int dy = my - s_last_mouse_y;
-                                    g_cam_yaw += (float)dx * 0.025f;
-                                    g_cam_pitch -= (float)dy * 0.020f;
-                                    if (g_cam_pitch > 1.25f) g_cam_pitch = 1.25f;
-                                    if (g_cam_pitch < -0.15f) g_cam_pitch = -0.15f;
-                                }
-                                s_last_mouse_x = mx;
-                                s_last_mouse_y = my;
-                            } else if (btn == 64) { // Scroll up -> pitch up
-                                g_cam_pitch += 0.04f;
-                                if (g_cam_pitch > 1.25f) g_cam_pitch = 1.25f;
-                            } else if (btn == 65) { // Scroll down -> pitch down
-                                g_cam_pitch -= 0.04f;
-                                if (g_cam_pitch < -0.15f) g_cam_pitch = -0.15f;
-                            } else if (btn == 2) { // Right click -> Kindle or Stoke
-                                if (g_fire_state == FIRE_STATE_SMOLDERING_REST) {
-                                    ignite_fireplace(true);
-                                } else if (g_fire_state == FIRE_STATE_UNLIT || g_fire_state == FIRE_STATE_EXTINGUISHED) {
-                                    ignite_fireplace(false);
-                                } else {
-                                    stir_fire_sparks(45);
-                                }
-                            }
-                        } else if (mode == 'm') {
-                            if (btn == 0 || btn == 32) {
-                                s_mouse_dragging = false;
-                                s_last_mouse_x = -1;
-                                s_last_mouse_y = -1;
-                            }
-                        }
-                    }
-                } else if (seq[1] == 'M') {
-                    // X10 mouse mode fallback
-                    char m_bytes[3];
-                    if (read(STDIN_FILENO, &m_bytes[0], 1) > 0 &&
-                        read(STDIN_FILENO, &m_bytes[1], 1) > 0 &&
-                        read(STDIN_FILENO, &m_bytes[2], 1) > 0) {
-                        int btn = (unsigned char)m_bytes[0] - 32;
-                        if (btn == 1) { // Middle click in X10
-                            g_auto_turntable = !g_auto_turntable;
-                        }
-                    }
                 }
             }
             continue;
@@ -7414,24 +7355,6 @@ static bool run_setup_menu(void) {
                         else if (selected == 6) { bgm = (bgm + 1) % 3; g_music_track = (MusicTrack)bgm; if (g_shared_music_track) *g_shared_music_track = bgm; }
                     } else if (strcmp(seq, "[200~") == 0) {
                         drain_bracketed_paste();
-                    } else if (seq[1] == '<') {
-                        int btn = 0, mx = 0, my = 0;
-                        char mode = 'M';
-                        if (sscanf(seq + 2, "%d;%d;%d%c", &btn, &mx, &my, &mode) >= 3 && mode == 'M') {
-                            if (btn == 64) {
-                                selected = (selected + 6) % 7;
-                            } else if (btn == 65) {
-                                selected = (selected + 1) % 7;
-                            } else if (btn == 0) {
-                                int row_idx = my - (start_r + 3);
-                                if (row_idx >= 0 && row_idx <= 6) {
-                                    selected = row_idx;
-                                }
-                            } else if (btn == 1) {
-                                in_menu = false;
-                                break;
-                            }
-                        }
                     }
                 }
                 continue;

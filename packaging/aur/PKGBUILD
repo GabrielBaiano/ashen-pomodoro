@@ -17,7 +17,7 @@ optdepends=(
     'alsa-utils: ambient audio and alert chimes'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('26dd382da11d48a201cc51b3f9bd8ec982f2ca5f4e8bd594a1b76b698edd2011')
 
 build() {
     cd "$pkgname-$pkgver"

@@ -35,6 +35,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <errno.h>
 
 #ifndef MAP_ANONYMOUS
 #ifdef MAP_ANON
@@ -860,8 +861,18 @@ static void print_bonfire_history(void) {
 }
 
 static void safe_write(int fd, const void *buf, size_t count) {
-    ssize_t ret = write(fd, buf, count);
-    (void)ret;
+    const char *p = (const char *)buf;
+    while (count > 0) {
+        ssize_t ret = write(fd, p, count);
+        if (ret > 0) {
+            p += ret;
+            count -= (size_t)ret;
+        } else if (ret < 0 && (errno == EINTR || errno == EAGAIN)) {
+            continue;
+        } else {
+            break;
+        }
+    }
 }
 
 #ifdef __APPLE__
@@ -5226,44 +5237,27 @@ static int visible_len(const char *s) {
     return vlen;
 }
 
-static void render_modal_border(char *buf, int buf_cap, int *buf_len, int row, int start_col, int inner_w,
-                                const char *left, const char *mid, const char *right) {
-    if (!buf || *buf_len >= buf_cap - 256) return;
-    int n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                     "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m%s",
-                     row, start_col, left);
-    if (n > 0) *buf_len += n;
-
-    for (int i = 0; i < inner_w; i++) {
-        if (*buf_len >= buf_cap - 64) break;
-        n = snprintf(buf + *buf_len, buf_cap - *buf_len, "%s", mid);
-        if (n > 0) *buf_len += n;
+static void format_modal_border_str(char *dst, size_t dst_cap, int inner_w,
+                                    const char *left, const char *mid, const char *right) {
+    if (!dst || dst_cap == 0) return;
+    int pos = snprintf(dst, dst_cap, "\033[48;2;16;10;8m\033[1;38;2;220;140;40m%s", left);
+    for (int i = 0; i < inner_w && pos + 16 < (int)dst_cap; i++) {
+        pos += snprintf(dst + pos, dst_cap - (size_t)pos, "%s", mid);
     }
-
-    if (*buf_len < buf_cap - 32) {
-        n = snprintf(buf + *buf_len, buf_cap - *buf_len, "%s\033[0m", right);
-        if (n > 0) *buf_len += n;
-    }
+    snprintf(dst + pos, dst_cap - (size_t)pos, "%s\033[0m", right);
 }
 
-static void render_modal_row(char *buf, int buf_cap, int *buf_len, int row, int start_col, int inner_w,
-                             const char *content) {
-    if (!buf || *buf_len >= buf_cap - 256) return;
+static void format_modal_row_str(char *dst, size_t dst_cap, int inner_w, const char *content) {
+    if (!dst || dst_cap == 0) return;
     int vlen = visible_len(content);
-    int pad_left = 0;
-    int pad_right = 0;
+    int pad_left = 0, pad_right = 0;
     if (inner_w > vlen) {
         pad_left = (inner_w - vlen) / 2;
         pad_right = inner_w - vlen - pad_left;
     }
-
-    int n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                     "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m║\033[48;2;16;10;8m%*s%s\033[48;2;16;10;8m%*s\033[1;38;2;220;140;40m║\033[0m",
-                     row, start_col,
-                     pad_left, "",
-                     content ? content : "",
-                     pad_right, "");
-    if (n > 0) *buf_len += n;
+    snprintf(dst, dst_cap,
+             "\033[48;2;16;10;8m\033[1;38;2;220;140;40m║\033[0m\033[48;2;16;10;8m%*s%s\033[48;2;16;10;8m%*s\033[1;38;2;220;140;40m║\033[0m",
+             pad_left, "", content ? content : "", pad_right, "");
 }
 
 // ============================================================================
@@ -5527,7 +5521,9 @@ static void composite_souls_banner_into_frame(int text_rows, int cols) {
     }
 }
 
-static void render_confirmation_modal(char *buf, int buf_cap, int *buf_len, int text_rows, int pixel_w) {
+static void format_confirmation_modal_lines(char lines[9][512], int *out_w, int *out_h,
+                                            int *out_start_r, int *out_start_c,
+                                            int text_rows, int pixel_w) {
     if (g_modal_active == MODAL_NONE) return;
 
     int modal_w = 56;
@@ -5536,10 +5532,15 @@ static void render_confirmation_modal(char *buf, int buf_cap, int *buf_len, int 
     int inner_w = modal_w - 2;
 
     int modal_h = 9;
-    int start_r = (text_rows - modal_h) / 2 + 1;
-    if (start_r < 2) start_r = 2;
-    int start_c = (pixel_w - modal_w) / 2 + 1;
-    if (start_c < 1) start_c = 1;
+    int start_r = (text_rows - modal_h) / 2;
+    if (start_r < 1) start_r = 1;
+    int start_c = (pixel_w - modal_w) / 2;
+    if (start_c < 0) start_c = 0;
+
+    *out_w = modal_w;
+    *out_h = modal_h;
+    *out_start_r = start_r;
+    *out_start_c = start_c;
 
     const char *title;
     char msg1[128];
@@ -5582,16 +5583,15 @@ static void render_confirmation_modal(char *buf, int buf_cap, int *buf_len, int 
         }
     }
 
-    int r = start_r;
-    render_modal_border(buf, buf_cap, buf_len, r++, start_c, inner_w, "╔", "═", "╗");
-    render_modal_row(buf, buf_cap, buf_len, r++, start_c, inner_w, title);
-    render_modal_border(buf, buf_cap, buf_len, r++, start_c, inner_w, "╠", "═", "╣");
-    render_modal_row(buf, buf_cap, buf_len, r++, start_c, inner_w, "");
-    render_modal_row(buf, buf_cap, buf_len, r++, start_c, inner_w, msg1);
-    render_modal_row(buf, buf_cap, buf_len, r++, start_c, inner_w, msg2);
-    render_modal_row(buf, buf_cap, buf_len, r++, start_c, inner_w, "");
-    render_modal_row(buf, buf_cap, buf_len, r++, start_c, inner_w, buttons);
-    render_modal_border(buf, buf_cap, buf_len, r++, start_c, inner_w, "╚", "═", "╝");
+    format_modal_border_str(lines[0], sizeof(lines[0]), inner_w, "╔", "═", "╗");
+    format_modal_row_str(lines[1], sizeof(lines[1]), inner_w, title);
+    format_modal_border_str(lines[2], sizeof(lines[2]), inner_w, "╠", "═", "╣");
+    format_modal_row_str(lines[3], sizeof(lines[3]), inner_w, "");
+    format_modal_row_str(lines[4], sizeof(lines[4]), inner_w, msg1);
+    format_modal_row_str(lines[5], sizeof(lines[5]), inner_w, msg2);
+    format_modal_row_str(lines[6], sizeof(lines[6]), inner_w, "");
+    format_modal_row_str(lines[7], sizeof(lines[7]), inner_w, buttons);
+    format_modal_border_str(lines[8], sizeof(lines[8]), inner_w, "╚", "═", "╝");
 }
 
 static int format_frame_buffer(char *buf, int buf_cap) {
@@ -5606,116 +5606,13 @@ static int format_frame_buffer(char *buf, int buf_cap) {
     bool prev_bg_transp = true;
 
     int text_rows = g_pixel_h / 2;
-    // Composite Souls/Bloodborne banner directly into g_frame before ANSI emission (zero overdraw, zero flicker!)
-    composite_souls_banner_into_frame(text_rows, g_pixel_w);
-    for (int r = 0; r < text_rows; r++) {
-        int y_top = r * 2;
-        int y_bot = r * 2 + 1;
-
-        for (int x = 0; x < g_pixel_w; x++) {
-            if (buf_len >= buf_cap - 64) break;
-            Pixel top = g_frame[y_top][x];
-            Pixel bot = g_frame[y_bot][x];
-
-            if (top.is_sky && bot.is_sky) {
-                uint8_t s = (top.shade > bot.shade) ? top.shade : bot.shade;
-                if (s > 0) {
-                    RGB sc = (top.shade >= bot.shade) ? top.color : bot.color;
-                    if (sc.r != prev_fg_r || sc.g != prev_fg_g || sc.b != prev_fg_b) {
-                        n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
-                                     sc.r, sc.g, sc.b);
-                        if (n > 0) buf_len += n;
-                        prev_fg_r = sc.r; prev_fg_g = sc.g; prev_fg_b = sc.b;
-                    }
-                    if (!prev_bg_transp) {
-                        n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
-                        if (n > 0) buf_len += n;
-                        prev_bg_transp = true;
-                        prev_bg_r = prev_bg_g = prev_bg_b = -1;
-                    }
-                    const char *glyph = (s >= 3) ? "▓" : ((s == 2) ? "▒" : "░");
-                    n = snprintf(buf + buf_len, buf_cap - buf_len, "%s", glyph);
-                    if (n > 0) buf_len += n;
-                    continue;
-                }
-                if (!prev_bg_transp) {
-                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
-                    if (n > 0) buf_len += n;
-                    prev_bg_transp = true;
-                    prev_bg_r = prev_bg_g = prev_bg_b = -1;
-                }
-                buf[buf_len++] = ' ';
-                continue;
-            }
-
-            if (top.is_sky && !bot.is_sky) {
-                if (bot.color.r != prev_fg_r || bot.color.g != prev_fg_g || bot.color.b != prev_fg_b) {
-                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
-                                 bot.color.r, bot.color.g, bot.color.b);
-                    if (n > 0) buf_len += n;
-                    prev_fg_r = bot.color.r; prev_fg_g = bot.color.g; prev_fg_b = bot.color.b;
-                }
-                if (!prev_bg_transp) {
-                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
-                    if (n > 0) buf_len += n;
-                    prev_bg_transp = true;
-                    prev_bg_r = prev_bg_g = prev_bg_b = -1;
-                }
-                n = snprintf(buf + buf_len, buf_cap - buf_len, "▄");
-                if (n > 0) buf_len += n;
-                continue;
-            }
-
-            if (!top.is_sky && bot.is_sky) {
-                if (top.color.r != prev_fg_r || top.color.g != prev_fg_g || top.color.b != prev_fg_b) {
-                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
-                                 top.color.r, top.color.g, top.color.b);
-                    if (n > 0) buf_len += n;
-                    prev_fg_r = top.color.r; prev_fg_g = top.color.g; prev_fg_b = top.color.b;
-                }
-                if (!prev_bg_transp) {
-                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
-                    if (n > 0) buf_len += n;
-                    prev_bg_transp = true;
-                    prev_bg_r = prev_bg_g = prev_bg_b = -1;
-                }
-                n = snprintf(buf + buf_len, buf_cap - buf_len, "▀");
-                if (n > 0) buf_len += n;
-                continue;
-            }
-
-            if (top.color.r != prev_fg_r || top.color.g != prev_fg_g || top.color.b != prev_fg_b) {
-                n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
-                             top.color.r, top.color.g, top.color.b);
-                if (n > 0) buf_len += n;
-                prev_fg_r = top.color.r; prev_fg_g = top.color.g; prev_fg_b = top.color.b;
-            }
-            if (bot.color.r != prev_bg_r || bot.color.g != prev_bg_g || bot.color.b != prev_bg_b) {
-                n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[48;2;%d;%d;%dm",
-                             bot.color.r, bot.color.g, bot.color.b);
-                if (n > 0) buf_len += n;
-                prev_bg_r = bot.color.r; prev_bg_g = bot.color.g; prev_bg_b = bot.color.b;
-                prev_bg_transp = false;
-            }
-            n = snprintf(buf + buf_len, buf_cap - buf_len, "▀");
-            if (n > 0) buf_len += n;
-        }
-        if (buf_len < buf_cap - 32) {
-            n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[0m\n");
-            if (n > 0) buf_len += n;
-        }
-        prev_fg_r = prev_fg_g = prev_fg_b = -1;
-        prev_bg_r = prev_bg_g = prev_bg_b = -1;
-        prev_bg_transp = true;
-    }
 
     // -------------------------------------------------------------------------
-    // TOP AESTHETIC POMODORO HUD (Dark Souls themed)
+    // 1. PRE-FORMAT TOP POMODORO HUD (zero cursor jumps, single-pass on row 0)
     // -------------------------------------------------------------------------
+    char hud_buf[256];
+    int hud_len = 0;
     if (g_pixel_w >= 65 && text_rows >= 6) {
-        char hud_buf[256];
-        int hud_len = 0;
-
         if (g_is_bloodborne) {
             if (g_fire_state == FIRE_STATE_UNLIT) {
                 hud_len = snprintf(hud_buf, sizeof(hud_buf),
@@ -5815,22 +5712,20 @@ static int format_frame_buffer(char *buf, int buf_cap) {
             hud_len = snprintf(hud_buf, sizeof(hud_buf),
                 "\033[1;30m[ EXTINGUISHED / COLD ASHES ]\033[0m  \033[1;37m[E]\033[0m \033[38;2;255;215;100mKindle New Cycle\033[0m");
         }
-
-        if (hud_len > 0) {
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[1;4H\033[48;2;14;10;8m %s \033[0m", hud_buf);
-            if (n > 0) buf_len += n;
-        }
     }
 
     // -------------------------------------------------------------------------
-    // BOTTOM SHORTCUTS FOOTER LINE (Dedicated row below 3D canvas, responsive width)
+    // 2. PRE-FORMAT CONFIRMATION MODAL (zero cursor jumps, scanline integration)
     // -------------------------------------------------------------------------
-    int footer_row = text_rows + 1;
-    if (footer_row > g_term_rows) footer_row = g_term_rows;
-    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[%d;1H\033[2K", footer_row);
-    if (n > 0) buf_len += n;
+    char modal_rows[9][512];
+    int modal_w = 0, modal_h = 0, modal_start_r = -1, modal_start_c = -1;
+    if (g_modal_active != MODAL_NONE) {
+        format_confirmation_modal_lines(modal_rows, &modal_w, &modal_h, &modal_start_r, &modal_start_c, text_rows, g_pixel_w);
+    }
 
+    // -------------------------------------------------------------------------
+    // 3. PRE-FORMAT BOTTOM SHORTCUTS FOOTER LINE
+    // -------------------------------------------------------------------------
     char footer_buf[256];
     const char *snd_mode = (!g_sound_enabled || g_sound_volume == 0) ? "Muted" : "Sound";
     int snd_vol = (!g_sound_enabled) ? 0 : g_sound_volume;
@@ -5890,14 +5785,146 @@ static int format_frame_buffer(char *buf, int buf_cap) {
         }
     }
 
-    n = snprintf(buf + buf_len, buf_cap - buf_len, " %s ", footer_buf);
-    if (n > 0) buf_len += n;
+    // Composite Souls/Bloodborne banner directly into g_frame before ANSI emission (zero overdraw, zero flicker!)
+    composite_souls_banner_into_frame(text_rows, g_pixel_w);
+    for (int r = 0; r < text_rows; r++) {
+        if (r == 0 && hud_len > 0) {
+            // Emit Top HUD on row 0 directly in single-pass scanline (zero overdraw, zero cursor jump!)
+            n = snprintf(buf + buf_len, buf_cap - buf_len,
+                         "\033[49m   \033[48;2;14;10;8m %s \033[0m\033[K\n", hud_buf);
+            if (n > 0) buf_len += n;
+            continue;
+        }
+
+        bool is_modal_row = (g_modal_active != MODAL_NONE &&
+                             r >= modal_start_r && r < modal_start_r + modal_h);
+        int m_idx = is_modal_row ? (r - modal_start_r) : -1;
+
+        int y_top = r * 2;
+        int y_bot = r * 2 + 1;
+
+        for (int x = 0; x < g_pixel_w; x++) {
+            if (buf_len >= buf_cap - 64) break;
+
+            if (is_modal_row && x == modal_start_c) {
+                if (!prev_bg_transp) {
+                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
+                    if (n > 0) buf_len += n;
+                    prev_bg_transp = true;
+                    prev_bg_r = prev_bg_g = prev_bg_b = -1;
+                }
+                n = snprintf(buf + buf_len, buf_cap - buf_len, "%s", modal_rows[m_idx]);
+                if (n > 0) buf_len += n;
+                prev_fg_r = prev_fg_g = prev_fg_b = -1;
+                prev_bg_r = prev_bg_g = prev_bg_b = -1;
+                prev_bg_transp = true;
+                x += modal_w - 1;
+                continue;
+            }
+
+            Pixel top = g_frame[y_top][x];
+            Pixel bot = g_frame[y_bot][x];
+
+            if (top.is_sky && bot.is_sky) {
+                uint8_t s = (top.shade > bot.shade) ? top.shade : bot.shade;
+                if (s > 0) {
+                    RGB sc = (top.shade >= bot.shade) ? top.color : bot.color;
+                    if (sc.r != prev_fg_r || sc.g != prev_fg_g || sc.b != prev_fg_b) {
+                        n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
+                                     sc.r, sc.g, sc.b);
+                        if (n > 0) buf_len += n;
+                        prev_fg_r = sc.r; prev_fg_g = sc.g; prev_fg_b = sc.b;
+                    }
+                    if (!prev_bg_transp) {
+                        n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
+                        if (n > 0) buf_len += n;
+                        prev_bg_transp = true;
+                        prev_bg_r = prev_bg_g = prev_bg_b = -1;
+                    }
+                    const char *glyph = (s >= 3) ? "▓" : ((s == 2) ? "▒" : "░");
+                    n = snprintf(buf + buf_len, buf_cap - buf_len, "%s", glyph);
+                    if (n > 0) buf_len += n;
+                    continue;
+                }
+                if (!prev_bg_transp) {
+                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
+                    if (n > 0) buf_len += n;
+                    prev_bg_transp = true;
+                    prev_bg_r = prev_bg_g = prev_bg_b = -1;
+                }
+                buf[buf_len++] = ' ';
+                continue;
+            }
+
+            if (top.is_sky && !bot.is_sky) {
+                if (bot.color.r != prev_fg_r || bot.color.g != prev_fg_g || bot.color.b != prev_fg_b) {
+                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
+                                 bot.color.r, bot.color.g, bot.color.b);
+                    if (n > 0) buf_len += n;
+                    prev_fg_r = bot.color.r; prev_fg_g = bot.color.g; prev_fg_b = bot.color.b;
+                }
+                if (!prev_bg_transp) {
+                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
+                    if (n > 0) buf_len += n;
+                    prev_bg_transp = true;
+                    prev_bg_r = prev_bg_g = prev_bg_b = -1;
+                }
+                n = snprintf(buf + buf_len, buf_cap - buf_len, "▄");
+                if (n > 0) buf_len += n;
+                continue;
+            }
+
+            if (!top.is_sky && bot.is_sky) {
+                if (top.color.r != prev_fg_r || top.color.g != prev_fg_g || top.color.b != prev_fg_b) {
+                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
+                                 top.color.r, top.color.g, top.color.b);
+                    if (n > 0) buf_len += n;
+                    prev_fg_r = top.color.r; prev_fg_g = top.color.g; prev_fg_b = top.color.b;
+                }
+                if (!prev_bg_transp) {
+                    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
+                    if (n > 0) buf_len += n;
+                    prev_bg_transp = true;
+                    prev_bg_r = prev_bg_g = prev_bg_b = -1;
+                }
+                n = snprintf(buf + buf_len, buf_cap - buf_len, "▀");
+                if (n > 0) buf_len += n;
+                continue;
+            }
+
+            if (top.color.r != prev_fg_r || top.color.g != prev_fg_g || top.color.b != prev_fg_b) {
+                n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
+                             top.color.r, top.color.g, top.color.b);
+                if (n > 0) buf_len += n;
+                prev_fg_r = top.color.r; prev_fg_g = top.color.g; prev_fg_b = top.color.b;
+            }
+            if (bot.color.r != prev_bg_r || bot.color.g != prev_bg_g || bot.color.b != prev_bg_b) {
+                n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[48;2;%d;%d;%dm",
+                             bot.color.r, bot.color.g, bot.color.b);
+                if (n > 0) buf_len += n;
+                prev_bg_r = bot.color.r; prev_bg_g = bot.color.g; prev_bg_b = bot.color.b;
+                prev_bg_transp = false;
+            }
+            n = snprintf(buf + buf_len, buf_cap - buf_len, "▀");
+            if (n > 0) buf_len += n;
+        }
+        if (buf_len < buf_cap - 32) {
+            n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[0m\n");
+            if (n > 0) buf_len += n;
+        }
+        prev_fg_r = prev_fg_g = prev_fg_b = -1;
+        prev_bg_r = prev_bg_g = prev_bg_b = -1;
+        prev_bg_transp = true;
+    }
+
+
 
     // -------------------------------------------------------------------------
-    // CONFIRMATION MODAL OVERLAY (Quit or Skip confirmation)
+    // 4. ATOMIC FOOTER LINE (Immediately below 3D canvas, no [2K, zero flicker)
     // -------------------------------------------------------------------------
-    if (g_modal_active != MODAL_NONE) {
-        render_confirmation_modal(buf, buf_cap, &buf_len, text_rows, g_pixel_w);
+    if (buf_len < buf_cap - 320) {
+        n = snprintf(buf + buf_len, buf_cap - buf_len, " %s[0m[K", footer_buf);
+        if (n > 0) buf_len += n;
     }
 
     if (buf_len >= buf_cap) buf_len = buf_cap - 1;

@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=Bonfire Pomodoro
-Comment=Dark Souls Bonfire Pomodoro timer in 3D TrueColor ASCII
+Name=Ashen Pomodoro
+Comment=Soulsborne 3D TrueColor ANSI Pomodoro timer
 Exec=bonfire
 Icon=utilities-terminal
 Terminal=true
 Type=Application
 Categories=Utility;Clock;
-Keywords=pomodoro;timer;bonfire;darksouls;focus;
+Keywords=pomodoro;timer;ashen;bonfire;darksouls;bloodborne;focus;

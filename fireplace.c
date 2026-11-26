@@ -5314,22 +5314,56 @@ typedef struct {
     RGB rule;
 } BannerTheme;
 
-static int banner_bg_cell(char *dst, int cap, const BannerTheme *th, float band) {
-    if (band >= 0.85f) return snprintf(dst, cap, "\033[48;2;%d;%d;%dm ", th->bg.r, th->bg.g, th->bg.b);
-    if (band < 0.30f) return snprintf(dst, cap, "\033[49m ");
-    return snprintf(dst, cap, "\033[49m\033[38;2;%d;%d;%dm%s",
-                    th->bg.r, th->bg.g, th->bg.b, (band < 0.6f) ? "░" : "▒");
-}
+static void composite_souls_banner_into_frame(int text_rows, int cols) {
+    static float s_banner_start = 0.0f, s_banner_last = 0.0f;
+    if (g_banner_timer > s_banner_last + 0.001f) s_banner_start = g_banner_timer;
+    s_banner_last = g_banner_timer;
 
-static void render_souls_banner(char *buf, int buf_cap, int *buf_len,
-                                int text_rows, int cols,
-                                const char *text, const BannerTheme *th,
-                                float alpha, float progress) {
-    if (cols < 24 || text_rows < 8 || alpha < 0.02f) return;
-    float band = alpha;
+    if (g_banner_timer <= 0.0f || cols < 24 || text_rows < 8) return;
+
+    float elapsed = s_banner_start - g_banner_timer;
+    float a_in  = fminf(fmaxf(elapsed / 1.0f, 0.0f), 1.0f);
+    float a_out = fminf(fmaxf(g_banner_timer / 0.85f, 0.0f), 1.0f);
+    a_in  = a_in * a_in * (3.0f - 2.0f * a_in);
+    a_out = a_out * a_out * (3.0f - 2.0f * a_out);
+    float alpha = (a_in < a_out) ? a_in : a_out;
+    if (alpha < 0.03f) return;
+    float progress = fminf(fmaxf(elapsed / fmaxf(0.1f, s_banner_start), 0.0f), 1.0f);
+
+    static const BannerTheme th_bb_lit = {
+        {10, 8, 16}, {38, 30, 62},
+        {248, 244, 255}, {192, 174, 238}, {118, 98, 172}, {170, 146, 224}
+    };
+    static const BannerTheme th_bb_prey = {
+        {16, 4, 6}, {64, 12, 16},
+        {255, 208, 208}, {228, 42, 52}, {132, 16, 24}, {205, 42, 48}
+    };
+    static const BannerTheme th_ds_lit = {
+        {10, 6, 5}, {58, 24, 9},
+        {255, 246, 196}, {246, 190, 64}, {178, 98, 22}, {212, 148, 52}
+    };
+    static const BannerTheme th_ds_rest = {
+        {10, 6, 5}, {48, 20, 8},
+        {255, 232, 168}, {226, 160, 54}, {152, 82, 22}, {190, 132, 48}
+    };
+
+    const char *text = NULL;
+    const BannerTheme *th = NULL;
+    if (g_is_bloodborne) {
+        if (g_banner_type == BANNER_LIT) {
+            text = "LANTERN LIT"; th = &th_bb_lit;
+        } else if (g_banner_type == BANNER_REST || g_banner_type == BANNER_LONG_REST) {
+            text = "PREY SLAUGHTERED"; th = &th_bb_prey;
+        }
+    } else if (g_banner_type == BANNER_LIT) {
+        text = "BONFIRE LIT"; th = &th_ds_lit;
+    } else if (g_banner_type == BANNER_REST || g_banner_type == BANNER_LONG_REST) {
+        text = (g_banner_type == BANNER_LONG_REST) ? "LONG REST" : "REST AT FIRE";
+        th = &th_ds_rest;
+    }
+    if (!text || !th) return;
 
     int tlen = (int)strlen(text);
-    // Choose letter tracking (2 cols wide, or 1 col if tight)
     int track = 2;
     int art_w = 0;
     for (int i = 0; i < tlen; i++) {
@@ -5344,39 +5378,8 @@ static void render_souls_banner(char *buf, int buf_cap, int *buf_len,
             if (i + 1 < tlen) art_w += track;
         }
     }
+    if (art_w + 6 > cols || art_w > 184) return;
 
-    int center_row = text_rows / 2;
-    int fade_w = 6;
-
-    // Fallback for narrow terminals: clean spaced text inside dark cinematic band
-    if (art_w + 10 > cols || art_w > 180) {
-        int spaced_w = tlen * 2 - 1;
-        int inner_w = spaced_w + 10;
-        if (inner_w > cols - 4) inner_w = cols - 4;
-        int start_c = (cols - inner_w) / 2 + 1;
-        int br = center_row - 1;
-        if (br < 2) br = 2;
-        int rt = (int)(th->hi.r * alpha), gt = (int)(th->hi.g * alpha), bt = (int)(th->hi.b * alpha);
-        int rr = (int)(th->rule.r * alpha), gr = (int)(th->rule.g * alpha), br_c = (int)(th->rule.b * alpha);
-        int n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-            "\033[%d;%dH\033[48;2;%d;%d;%dm\033[38;2;%d;%d;%dm%*s\033[0m",
-            br, start_c, th->bg.r, th->bg.g, th->bg.b, rr, gr, br_c, inner_w, "");
-        if (n > 0) *buf_len += n;
-        int tc = (cols - spaced_w) / 2 + 1;
-        n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-            "\033[%d;%dH\033[48;2;%d;%d;%dm\033[1;38;2;%d;%d;%dm",
-            br + 1, tc, th->bg.r, th->bg.g, th->bg.b, rt, gt, bt);
-        if (n > 0) *buf_len += n;
-        for (int i = 0; i < tlen && *buf_len + 4 < buf_cap; i++) {
-            buf[(*buf_len)++] = text[i];
-            if (i + 1 < tlen) buf[(*buf_len)++] = ' ';
-        }
-        n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[0m");
-        if (n > 0) *buf_len += n;
-        return;
-    }
-
-    // Rasterize Trajan glyphs into a compact 8x200 subpixel mask
     static uint8_t mask[8][200];
     int pad_x = 5;
     int inner_w = art_w + pad_x * 2;
@@ -5396,144 +5399,131 @@ static void render_souls_banner(char *buf, int buf_cap, int *buf_len,
         cx += g->w + track;
     }
 
+    int fade_w = 8;
     int total_w = inner_w + fade_w * 2;
     if (total_w > cols) {
         fade_w = (cols - inner_w) / 2;
         if (fade_w < 0) fade_w = 0;
         total_w = inner_w + fade_w * 2;
     }
-    int start_c = (cols - total_w) / 2 + 1;
-    int banner_row = center_row - 3;
+    int start_x = (cols - total_w) / 2;
+    int banner_row = (text_rows / 2) - 3;
     if (banner_row < 2) banner_row = 2;
+    if (banner_row + 6 > text_rows) banner_row = text_rows - 6;
+    if (banner_row < 0) return;
 
-    // Horizontal specular glint sweeping across the lettering during display
+    // 12 subpixels tall (6 terminal rows):
+    // sy=0: top dark margin, sy=1: crisp 1px gradient rule (no diamond!), sy=2..9: 8px Trajan glyphs, sy=10: bottom 1px rule, sy=11: bottom margin
+    int y_base = banner_row * 2;
     float sweep_x = -12.0f + progress * (float)(inner_w + 24);
 
-    // Top & bottom ornamental gradient rules (rows 0 and 5) with lateral transparent shade fade
-    for (int pass = 0; pass < 2; pass++) {
-        int r_out = (pass == 0) ? banner_row : (banner_row + 5);
-        int n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[%d;%dH", r_out, start_c);
-        if (n > 0) *buf_len += n;
-        for (int x = 0; x < total_w && *buf_len + 48 < buf_cap; x++) {
-            if (x < fade_w || x >= total_w - fade_w) {
-                int dist_edge = (x < fade_w) ? x : (total_w - 1 - x);
-                const char *sh = (dist_edge < 2) ? "░" : ((dist_edge < 4) ? "▒" : "▓");
-                if (band < 0.85f) sh = " ";
-                n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                    "\033[49m\033[38;2;%d;%d;%dm%s", th->bg.r, th->bg.g, th->bg.b, sh);
-                if (n > 0) *buf_len += n;
-            } else {
-                int ix = x - fade_w;
-                float u = (float)ix / fmaxf(1.0f, (float)(inner_w - 1));
-                float arch = sinf(u * (float)M_PI);
-                float lum = (0.18f + 0.82f * arch * arch) * alpha;
-                int rr = (int)(th->rule.r * lum);
-                int gr = (int)(th->rule.g * lum);
-                int br = (int)(th->rule.b * lum);
-                const char *sym = (ix == inner_w / 2) ? "◆" :
-                                  ((arch > 0.72f) ? "━" : ((arch > 0.25f) ? "─" : " "));
-                if (band < 0.85f) {
-                    if (sym[0] == ' ') n = banner_bg_cell(buf + *buf_len, buf_cap - *buf_len, th, band);
-                    else n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                        "\033[49m\033[38;2;%d;%d;%dm%s", rr, gr, br, sym);
-                } else {
-                    n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                        "\033[48;2;%d;%d;%dm\033[38;2;%d;%d;%dm%s",
-                        th->bg.r, th->bg.g, th->bg.b, rr, gr, br, sym);
+    for (int sy = 0; sy < 12; sy++) {
+        int py = y_base + sy;
+        if (py < 0 || py >= g_pixel_h) continue;
+        // Soft vertical feather on outer margin subpixels (sy=0 and sy=11)
+        float wy = (sy == 0 || sy == 11) ? 0.65f : 1.0f;
+
+        for (int bx = 0; bx < total_w; bx++) {
+            int px = start_x + bx;
+            if (px < 0 || px >= cols) continue;
+
+            float wx = 1.0f;
+            if (fade_w > 0 && bx < fade_w) {
+                float t = (float)(bx + 1) / (float)(fade_w + 1);
+                wx = t * t * (3.0f - 2.0f * t);
+            } else if (fade_w > 0 && bx >= total_w - fade_w) {
+                float t = (float)(total_w - bx) / (float)(fade_w + 1);
+                wx = t * t * (3.0f - 2.0f * t);
+            }
+
+            float band_op = alpha * wx * wy;
+            if (band_op < 0.04f) continue;
+
+            int ix = bx - fade_w;
+            bool is_fg = false;
+            RGB src = th->bg;
+            float fg_op = band_op;
+
+            if (ix >= 0 && ix < inner_w) {
+                if (sy == 1 || sy == 10) {
+                    // Clean continuous 1px ornamental horizontal rule (no center diamond)
+                    float u = (float)ix / fmaxf(1.0f, (float)(inner_w - 1));
+                    float arch = sinf(u * (float)M_PI);
+                    float rule_t = arch * arch;
+                    if (rule_t > 0.06f) {
+                        is_fg = true;
+                        src.r = (uint8_t)(th->bg.r + (th->rule.r - th->bg.r) * rule_t);
+                        src.g = (uint8_t)(th->bg.g + (th->rule.g - th->bg.g) * rule_t);
+                        src.b = (uint8_t)(th->bg.b + (th->rule.b - th->bg.b) * rule_t);
+                        fg_op = alpha * wx;
+                    }
+                } else if (sy >= 2 && sy <= 9) {
+                    int gy = sy - 2;
+                    if (mask[gy][ix]) {
+                        is_fg = true;
+                        float v = (float)gy / 7.0f;
+                        float cr, cg, cb;
+                        if (v < 0.45f) {
+                            float t = v / 0.45f;
+                            cr = th->hi.r + (th->mid.r - th->hi.r) * t;
+                            cg = th->hi.g + (th->mid.g - th->hi.g) * t;
+                            cb = th->hi.b + (th->mid.b - th->hi.b) * t;
+                        } else {
+                            float t = (v - 0.45f) / 0.55f;
+                            cr = th->mid.r + (th->lo.r - th->mid.r) * t;
+                            cg = th->mid.g + (th->lo.g - th->mid.g) * t;
+                            cb = th->mid.b + (th->lo.b - th->mid.b) * t;
+                        }
+                        float dsw = fabsf(((float)ix + (float)gy * 0.6f) - sweep_x);
+                        if (dsw < 4.0f) {
+                            float g = (1.0f - dsw / 4.0f) * 0.42f;
+                            cr += (255.0f - cr) * g;
+                            cg += (255.0f - cg) * g;
+                            cb += (255.0f - cb) * g;
+                        }
+                        src.r = (uint8_t)cr; src.g = (uint8_t)cg; src.b = (uint8_t)cb;
+                        fg_op = alpha;
+                    } else {
+                        bool near = (ix > 0 && mask[gy][ix - 1]) || (ix + 1 < inner_w && mask[gy][ix + 1]) ||
+                                    (gy > 0 && mask[gy - 1][ix]) || (gy < 7 && mask[gy + 1][ix]);
+                        if (near) {
+                            src = th->bloom;
+                        }
+                    }
                 }
-                if (n > 0) *buf_len += n;
+            }
+
+            Pixel *dst = &g_frame[py][px];
+            if (!dst->is_sky) {
+                // True RGB alpha-blend directly over 3D flames/sword/stones (zero overdraw, translucent band!)
+                float op = is_fg ? fg_op : (band_op * 0.88f);
+                dst->color.r = (uint8_t)(dst->color.r + ((float)src.r - (float)dst->color.r) * op);
+                dst->color.g = (uint8_t)(dst->color.g + ((float)src.g - (float)dst->color.g) * op);
+                dst->color.b = (uint8_t)(dst->color.b + ((float)src.b - (float)dst->color.b) * op);
+                dst->shade = 0;
+            } else if (is_fg) {
+                if (fg_op >= 0.14f) {
+                    dst->is_sky = false;
+                    dst->shade = 0;
+                    dst->color.r = (uint8_t)(th->bg.r + ((float)src.r - (float)th->bg.r) * fg_op);
+                    dst->color.g = (uint8_t)(th->bg.g + ((float)src.g - (float)th->bg.g) * fg_op);
+                    dst->color.b = (uint8_t)(th->bg.b + ((float)src.b - (float)th->bg.b) * fg_op);
+                }
+            } else {
+                // Dark cinematic band over transparent sky: solid at full hold, dissolves via ▓▒░ during fade/edges
+                if (band_op >= 0.82f) {
+                    dst->is_sky = false;
+                    dst->shade = 0;
+                    dst->color = src;
+                } else if (band_op >= 0.18f) {
+                    uint8_t sh = (band_op >= 0.58f) ? 3 : ((band_op >= 0.36f) ? 2 : 1);
+                    if (sh > dst->shade) {
+                        dst->shade = sh;
+                        dst->color = th->bg;
+                    }
+                }
             }
         }
-        n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[0m");
-        if (n > 0) *buf_len += n;
-    }
-
-    // 4 half-block rows (8 subpixels) for the Trajan lettering + soft inner bloom
-    for (int br = 0; br < 4; br++) {
-        int r_out = banner_row + 1 + br;
-        int y0 = br * 2;
-        int y1 = br * 2 + 1;
-        int n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[%d;%dH", r_out, start_c);
-        if (n > 0) *buf_len += n;
-
-        for (int x = 0; x < total_w && *buf_len + 64 < buf_cap; x++) {
-            if (x < fade_w || x >= total_w - fade_w) {
-                int dist_edge = (x < fade_w) ? x : (total_w - 1 - x);
-                const char *sh = (dist_edge < 2) ? "░" : ((dist_edge < 4) ? "▒" : "▓");
-                if (band < 0.85f) sh = " ";
-                n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                    "\033[49m\033[38;2;%d;%d;%dm%s", th->bg.r, th->bg.g, th->bg.b, sh);
-                if (n > 0) *buf_len += n;
-                continue;
-            }
-
-            int ix = x - fade_w;
-            RGB c_sub[2];
-            for (int s = 0; s < 2; s++) {
-                int sy = (s == 0) ? y0 : y1;
-                if (mask[sy][ix]) {
-                    float v = (float)sy / 7.0f;
-                    float cr, cg, cb;
-                    if (v < 0.45f) {
-                        float t = v / 0.45f;
-                        cr = th->hi.r + (th->mid.r - th->hi.r) * t;
-                        cg = th->hi.g + (th->mid.g - th->hi.g) * t;
-                        cb = th->hi.b + (th->mid.b - th->hi.b) * t;
-                    } else {
-                        float t = (v - 0.45f) / 0.55f;
-                        cr = th->mid.r + (th->lo.r - th->mid.r) * t;
-                        cg = th->mid.g + (th->lo.g - th->mid.g) * t;
-                        cb = th->mid.b + (th->lo.b - th->mid.b) * t;
-                    }
-                    float dsw = fabsf(((float)ix + (float)sy * 0.6f) - sweep_x);
-                    if (dsw < 4.0f) {
-                        float g = (1.0f - dsw / 4.0f) * 0.42f;
-                        cr += (255.0f - cr) * g;
-                        cg += (255.0f - cg) * g;
-                        cb += (255.0f - cb) * g;
-                    }
-                    c_sub[s].r = (uint8_t)(th->bg.r + (cr - th->bg.r) * alpha);
-                    c_sub[s].g = (uint8_t)(th->bg.g + (cg - th->bg.g) * alpha);
-                    c_sub[s].b = (uint8_t)(th->bg.b + (cb - th->bg.b) * alpha);
-                } else {
-                    bool near = (ix > 0 && mask[sy][ix - 1]) || (ix + 1 < inner_w && mask[sy][ix + 1]) ||
-                                (sy > 0 && mask[sy - 1][ix]) || (sy < 7 && mask[sy + 1][ix]);
-                    if (near) {
-                        c_sub[s].r = (uint8_t)(th->bg.r + (th->bloom.r - th->bg.r) * alpha);
-                        c_sub[s].g = (uint8_t)(th->bg.g + (th->bloom.g - th->bg.g) * alpha);
-                        c_sub[s].b = (uint8_t)(th->bg.b + (th->bloom.b - th->bg.b) * alpha);
-                    } else {
-                        c_sub[s] = th->bg;
-                    }
-                }
-            }
-
-            bool t_on = !(c_sub[0].r == th->bg.r && c_sub[0].g == th->bg.g && c_sub[0].b == th->bg.b);
-            bool b_on = !(c_sub[1].r == th->bg.r && c_sub[1].g == th->bg.g && c_sub[1].b == th->bg.b);
-            if (band < 0.85f && !(t_on && b_on)) {
-                // During fade, dark band dissolves into transparent shade so it never lingers as a box
-                if (!t_on && !b_on) {
-                    n = banner_bg_cell(buf + *buf_len, buf_cap - *buf_len, th, band);
-                } else if (t_on) {
-                    n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                        "\033[49m\033[38;2;%d;%d;%dm▀", c_sub[0].r, c_sub[0].g, c_sub[0].b);
-                } else {
-                    n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                        "\033[49m\033[38;2;%d;%d;%dm▄", c_sub[1].r, c_sub[1].g, c_sub[1].b);
-                }
-            } else if (c_sub[0].r == c_sub[1].r && c_sub[0].g == c_sub[1].g && c_sub[0].b == c_sub[1].b) {
-                n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                    "\033[48;2;%d;%d;%dm ", c_sub[0].r, c_sub[0].g, c_sub[0].b);
-            } else {
-                n = snprintf(buf + *buf_len, buf_cap - *buf_len,
-                    "\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm▀",
-                    c_sub[0].r, c_sub[0].g, c_sub[0].b,
-                    c_sub[1].r, c_sub[1].g, c_sub[1].b);
-            }
-            if (n > 0) *buf_len += n;
-        }
-        n = snprintf(buf + *buf_len, buf_cap - *buf_len, "\033[0m");
-        if (n > 0) *buf_len += n;
     }
 }
 
@@ -5616,6 +5606,8 @@ static int format_frame_buffer(char *buf, int buf_cap) {
     bool prev_bg_transp = true;
 
     int text_rows = g_pixel_h / 2;
+    // Composite Souls/Bloodborne banner directly into g_frame before ANSI emission (zero overdraw, zero flicker!)
+    composite_souls_banner_into_frame(text_rows, g_pixel_w);
     for (int r = 0; r < text_rows; r++) {
         int y_top = r * 2;
         int y_bot = r * 2 + 1;
@@ -5900,57 +5892,6 @@ static int format_frame_buffer(char *buf, int buf_cap) {
 
     n = snprintf(buf + buf_len, buf_cap - buf_len, " %s ", footer_buf);
     if (n > 0) buf_len += n;
-
-    // -------------------------------------------------------------------------
-    // CINEMATIC BANNER OVERLAYS (Dark Souls / Bloodborne Trajan Half-Block ANSI)
-    // -------------------------------------------------------------------------
-    static float s_banner_start = 0.0f, s_banner_last = 0.0f;
-    if (g_banner_timer > s_banner_last + 0.001f) s_banner_start = g_banner_timer;
-    s_banner_last = g_banner_timer;
-
-    if (g_banner_timer > 0.0f) {
-        // Souls-style envelope: slow eased fade-in (1.1s), hold, quick clean eased fade-out (0.9s)
-        float elapsed = s_banner_start - g_banner_timer;
-        float a_in  = fminf(fmaxf(elapsed / 1.1f, 0.0f), 1.0f);
-        float a_out = fminf(fmaxf(g_banner_timer / 0.9f, 0.0f), 1.0f);
-        a_in  = a_in * a_in * (3.0f - 2.0f * a_in);
-        a_out = a_out * a_out * (3.0f - 2.0f * a_out);
-        float alpha = (a_in < a_out) ? a_in : a_out;
-        float progress = fminf(fmaxf(elapsed / fmaxf(0.1f, s_banner_start), 0.0f), 1.0f);
-
-        if (g_is_bloodborne) {
-            if (g_banner_type == BANNER_LIT) {
-                static const BannerTheme th_bb_lit = {
-                    {10, 8, 16}, {38, 30, 62},
-                    {248, 244, 255}, {192, 174, 238}, {118, 98, 172}, {170, 146, 224}
-                };
-                render_souls_banner(buf, buf_cap, &buf_len, text_rows, g_pixel_w,
-                                    "LANTERN LIT", &th_bb_lit, alpha, progress);
-            } else if (g_banner_type == BANNER_REST || g_banner_type == BANNER_LONG_REST) {
-                static const BannerTheme th_bb_prey = {
-                    {16, 4, 6}, {64, 12, 16},
-                    {255, 208, 208}, {228, 42, 52}, {132, 16, 24}, {205, 42, 48}
-                };
-                render_souls_banner(buf, buf_cap, &buf_len, text_rows, g_pixel_w,
-                                    "PREY SLAUGHTERED", &th_bb_prey, alpha, progress);
-            }
-        } else if (g_banner_type == BANNER_LIT) {
-            static const BannerTheme th_ds_lit = {
-                {10, 6, 5}, {58, 24, 9},
-                {255, 246, 196}, {246, 190, 64}, {178, 98, 22}, {212, 148, 52}
-            };
-            render_souls_banner(buf, buf_cap, &buf_len, text_rows, g_pixel_w,
-                                "BONFIRE LIT", &th_ds_lit, alpha, progress);
-        } else if (g_banner_type == BANNER_REST || g_banner_type == BANNER_LONG_REST) {
-            static const BannerTheme th_ds_rest = {
-                {10, 6, 5}, {48, 20, 8},
-                {255, 232, 168}, {226, 160, 54}, {152, 82, 22}, {190, 132, 48}
-            };
-            const char *title = (g_banner_type == BANNER_LONG_REST) ? "LONG REST" : "REST AT FIRE";
-            render_souls_banner(buf, buf_cap, &buf_len, text_rows, g_pixel_w,
-                                title, &th_ds_rest, alpha, progress);
-        }
-    }
 
     // -------------------------------------------------------------------------
     // CONFIRMATION MODAL OVERLAY (Quit or Skip confirmation)

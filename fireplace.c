@@ -235,6 +235,51 @@ static const RGB PALETTE_BONE[] = {
     {252, 248, 238}   // 4: Chalky bone highlight
 };
 
+// Bloodborne Victorian Wrought-Iron & Dark Weathered Wood Pole Palette
+static const RGB PALETTE_GOTHIC_IRON[] = {
+    {10, 11, 16},     // 0: Pitch-dark iron shadow
+    {26, 28, 38},     // 1: Dark oxidized iron / weathered dark wood
+    {52, 56, 72},     // 2: Slate-grey weathered iron
+    {90, 98, 122},    // 3: Lantern-lit steel edge
+    {162, 174, 208}   // 4: Cold ghostly blue-silver specular highlight
+};
+
+// Bloodborne Messengers Palette (Ghastly pale bone-ivory / parchment alabaster)
+static const RGB PALETTE_MESSENGER[] = {
+    {8, 8, 12},       // 0: Deep hollow eye socket / mouth void
+    {42, 42, 48},     // 1: Deep ribcage / underside chiaroscuro shadow
+    {110, 108, 110},  // 2: Shadowed pale grey bone/flesh
+    {178, 176, 172},  // 3: Ghastly pale ivory skin
+    {238, 238, 242}   // 4: Bright top-lit alabaster cranium / clavicle
+};
+
+// Bloodborne Ghostly Lantern Core & Ethereal Flame Palette (Cold White -> Ice Blue -> Indigo)
+static const RGB PALETTE_BB_FLAME[] = {
+    {38,  48,  88},   // 0: Misty midnight blue aura
+    {84, 102, 162},   // 1: Pale ghostly indigo-blue
+    {150, 168, 224},  // 2: Luminous silver-lavender wisp
+    {218, 228, 252},  // 3: Blinding ice-white halo
+    {255, 255, 255}   // 4: Pure ghostly white core
+};
+
+// Bloodborne Spectral Dust Motes Palette (Soft pale blue-white / silver mist)
+static const RGB PALETTE_SPECTRAL[] = {
+    {45,  55,  92},   // 0: Dim night mote
+    {90, 106, 158},   // 1: Cold slate-blue mote
+    {146, 164, 218},  // 2: Pale silver-blue wisp
+    {200, 214, 248},  // 3: Bright ghostly dust
+    {244, 248, 255}   // 4: Pure white spectral spark
+};
+
+// Tarnished Antique Brass Bell Palette (Warm gleaming antique gold-brass)
+static const RGB PALETTE_BB_BRASS[] = {
+    {62, 50, 22},     // 0: Deep antique bronze shadow
+    {112, 92, 42},    // 1: Aged brass midtone
+    {168, 144, 72},   // 2: Warm antique gold-brass
+    {216, 192, 108},  // 3: Bright lit brass rim
+    {252, 236, 162}   // 4: Specular golden brass glint
+};
+
 typedef struct {
     float x, y, z;
 } Vec3;
@@ -243,6 +288,55 @@ typedef struct {
 #define OBJ_SWORD 800
 #define MAX_BONES 80
 #define OBJ_BONE_BASE 900
+#define NUM_LAMP_POLE_SEGS 8
+#define NUM_LAMP_RIBS 4
+#define NUM_LAMP_CHAINS 5
+#define NUM_LAMP_BELLS 3
+#define NUM_MESSENGERS 4
+#define OBJ_LAMP_BASE 700
+#define OBJ_MSGR_BASE 750
+
+typedef struct {
+    Vec3 p1, p2;
+    float radius;
+} LampSegment;
+
+typedef struct {
+    Vec3 apex;
+    Vec3 axis;
+    float length;
+    float r_top;
+    float r_bot;
+} LampBell;
+
+typedef struct {
+    int obj_id;
+    bool active;
+    Vec3 lantern_pos;                        // Center of hanging tapered lantern chamber
+    Vec3 flame_pos;                          // Ethereal white-blue light core
+    Vec3 capital_pos;                        // Ornate flared capital flange on the pole beside lantern
+    LampSegment pole_segs[NUM_LAMP_POLE_SEGS]; // Vertical post + diagonal angled gallows arm
+    LampSegment straps[3];                   // Rope/iron binding wraps along the diagonal arm
+    LampBell bells[NUM_LAMP_BELLS];          // Cluster of 3 antique brass bells at top tip
+    LampSegment top_hook;                    // Suspension chain from bell cluster down to lantern crown
+    LampSegment bottom_chain;                // Thin vertical chain dangling down between lantern and post
+    LampSegment slack_chains[NUM_LAMP_CHAINS]; // Draped slack chain linking pole to lantern
+    LampSegment ribs[NUM_LAMP_RIBS];         // 4 slanted tapered wrought-iron cage ribs
+} Lamp3D;
+
+typedef struct {
+    int obj_id;
+    Vec3 head_pos;
+    float head_radius;
+    Vec3 jaw_pos;
+    float jaw_radius;
+    Vec3 neck_p1, neck_p2;
+    Vec3 shoulder_l, shoulder_r;
+    Vec3 torso_p1, torso_p2;
+    Vec3 elbow_l, hand_l;
+    Vec3 elbow_r, hand_r;
+    float yaw;
+} Messenger3D;
 
 typedef struct {
     Vec3 p1, p2;
@@ -401,6 +495,7 @@ typedef struct {
 typedef struct {
     RGB color;
     bool is_sky;
+    uint8_t shade; // 0: solid half-block, 1: light shade ░ (25%), 2: medium shade ▒ (50%), 3: dark shade ▓ (75%)
 } Pixel;
 
 // Terminal and render state
@@ -458,8 +553,27 @@ typedef enum {
     MODAL_CONFIRM_SKIP = 2
 } ModalType;
 
-// Dark Souls Coiled Sword (Espada Espiral) & Bone Pile
-static bool g_is_dark_souls = false;
+// Visual Themes: Classic Wood, Dark Souls Bonfire, Bloodborne Hunter's Lamp
+typedef enum {
+    STYLE_CLASSIC_WOOD = 0,
+    STYLE_DARK_SOULS = 1,
+    STYLE_BLOODBORNE = 2
+} SceneStyle;
+
+static SceneStyle g_scene_style = STYLE_DARK_SOULS;
+static bool g_is_dark_souls = true;
+static bool g_is_bloodborne = false;
+static bool g_style_forced = false;
+
+static Lamp3D g_lamp;
+static Messenger3D g_messengers[NUM_MESSENGERS];
+
+static void set_scene_style(SceneStyle s) {
+    g_scene_style = s;
+    g_is_dark_souls = (s == STYLE_DARK_SOULS);
+    g_is_bloodborne = (s == STYLE_BLOODBORNE);
+}
+
 static FireState g_fire_state = FIRE_STATE_UNLIT;
 static BannerType g_banner_type = BANNER_NONE;
 static ModalType g_modal_active = MODAL_NONE;
@@ -979,7 +1093,7 @@ static void update_ambient_audio(void) {
 
 static void reset_terminal(void) {
     stop_ambient_sound();
-    safe_write(STDOUT_FILENO, "\033[?1000l\033[?1002l\033[?1006l\033[?2004l\033[?1049l\033[?25h\033[0m\n", 37);
+    safe_write(STDOUT_FILENO, "\033[?2004l\033[?1049l\033[?25h\033[0m\n", 27);
     tcsetattr(STDIN_FILENO, TCSANOW, &g_orig_termios);
 }
 
@@ -1008,7 +1122,7 @@ static void setup_terminal(void) {
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGWINCH, &sa, NULL);
 
-    safe_write(STDOUT_FILENO, "\033[?1049h\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[?2004h\033[2J", 35);
+    safe_write(STDOUT_FILENO, "\033[?1049h\033[?25l\033[?2004h\033[2J", 26);
 }
 
 static void update_dimensions(void) {
@@ -1416,6 +1530,179 @@ static void build_dark_souls_scene(void) {
     }
 }
 
+static void build_bloodborne_scene(void) {
+    g_num_logs = 0;
+    g_num_bones = 0;
+    g_num_twigs = 0;
+    g_num_leaves = 0;
+    g_num_stones = 0;
+    g_sword.active = false;
+
+    // 1. Authentic Bloodborne Hunter's Lamp: Pillar + Flared Capital + Diagonal Gallows Arm + 3 Brass Bells + Tapered Lantern
+    g_lamp.active = true;
+    g_lamp.obj_id = OBJ_LAMP_BASE;
+
+    float lx = 0.14f;
+    float lz = 0.00f;
+    g_lamp.lantern_pos = (Vec3){lx, 1.76f, lz};
+    g_lamp.flame_pos   = (Vec3){lx, 1.76f, lz};
+    g_lamp.capital_pos = (Vec3){-1.26f, 1.44f, 0.08f};
+
+    // Lower vertical iron/stone pillar rising to capital flange, then straight-ish diagonal gallows arm shooting up-left to finial tip
+    static const Vec3 pole_pts[NUM_LAMP_POLE_SEGS + 1] = {
+        {-1.24f, -4.25f,  0.14f},
+        {-1.28f, -2.35f,  0.12f},
+        {-1.30f, -0.45f,  0.10f},
+        {-1.26f,  1.42f,  0.08f}, // Flared architectural capital flange height
+        {-1.08f,  2.32f,  0.06f}, // Diagonal angled gallows arm begins
+        {-0.80f,  3.18f,  0.04f},
+        {-0.46f,  3.96f,  0.02f},
+        {-0.06f,  4.56f,  0.00f}, // Top tip where the 3 brass bells hang
+        { 0.04f,  4.86f,  0.00f}  // Pointed gothic finial knob at very top
+    };
+    static const float pole_rads[NUM_LAMP_POLE_SEGS] = {
+        0.19f, 0.18f, 0.17f, 0.16f, 0.15f, 0.14f, 0.13f, 0.085f
+    };
+    for (int i = 0; i < NUM_LAMP_POLE_SEGS; i++) {
+        g_lamp.pole_segs[i].p1 = pole_pts[i];
+        g_lamp.pole_segs[i].p2 = pole_pts[i + 1];
+        g_lamp.pole_segs[i].radius = pole_rads[i];
+    }
+
+    // Thick diagonal iron/leather binding straps wrapping the angled upper arm
+    g_lamp.straps[0] = (LampSegment){{-1.12f, 2.18f, 0.06f}, {-1.02f, 2.48f, 0.06f}, 0.21f};
+    g_lamp.straps[1] = (LampSegment){{-0.86f, 3.02f, 0.04f}, {-0.72f, 3.34f, 0.04f}, 0.20f};
+    g_lamp.straps[2] = (LampSegment){{-0.52f, 3.80f, 0.02f}, {-0.38f, 4.10f, 0.02f}, 0.19f};
+
+    // Cluster of 3 antique brass bells staggered at the top tip (exact Bloodborne asymmetrical silhouette!)
+    // Bell 0: Main upper-front round bell (bright golden circular rim + visible dark hollow center)
+    g_lamp.bells[0].apex   = (Vec3){ 0.02f, 4.62f, -0.04f};
+    g_lamp.bells[0].axis   = vec3_norm((Vec3){ 0.10f, -0.58f, -0.80f});
+    g_lamp.bells[0].length = 0.42f;
+    g_lamp.bells[0].r_top  = 0.14f;
+    g_lamp.bells[0].r_bot  = 0.38f;
+
+    // Bell 1: Left-flaring wing bell staggered slightly lower & further left (+X) for clear separation
+    g_lamp.bells[1].apex   = (Vec3){ 0.24f, 4.28f,  0.02f};
+    g_lamp.bells[1].axis   = vec3_norm((Vec3){ 0.90f, -0.40f, -0.14f});
+    g_lamp.bells[1].length = 0.46f;
+    g_lamp.bells[1].r_top  = 0.10f;
+    g_lamp.bells[1].r_bot  = 0.28f;
+
+    // Bell 2: Lower-right bell tucked slightly lower under the angled arm
+    g_lamp.bells[2].apex   = (Vec3){-0.22f, 4.10f,  0.10f};
+    g_lamp.bells[2].axis   = vec3_norm((Vec3){-0.68f, -0.68f,  0.26f});
+    g_lamp.bells[2].length = 0.42f;
+    g_lamp.bells[2].r_top  = 0.10f;
+    g_lamp.bells[2].r_bot  = 0.26f;
+
+    // Suspension chain dropping from the bell cluster down to the tall lantern crown
+    g_lamp.top_hook = (LampSegment){{lx, 4.20f, lz}, {lx, 3.30f, lz}, 0.055f};
+
+    // Thin vertical chain hanging straight down between lantern and pillar (like reference photo!)
+    g_lamp.bottom_chain = (LampSegment){{-0.42f, 1.18f, 0.05f}, {-0.42f, -1.85f, 0.05f}, 0.045f};
+
+    // Draped catenary slack chain linking upper angled arm/capital to lantern side
+    static const Vec3 chain_pts[NUM_LAMP_CHAINS + 1] = {
+        {-1.18f, 2.02f, 0.06f},
+        {-1.06f, 1.48f, 0.05f},
+        {-0.84f, 1.10f, 0.04f},
+        {-0.64f, 1.12f, 0.03f},
+        {-0.50f, 1.32f, 0.02f},
+        {-0.40f, 1.56f, 0.01f}
+    };
+    for (int i = 0; i < NUM_LAMP_CHAINS; i++) {
+        g_lamp.slack_chains[i].p1 = chain_pts[i];
+        g_lamp.slack_chains[i].p2 = chain_pts[i + 1];
+        g_lamp.slack_chains[i].radius = 0.045f;
+    }
+
+    // 4 SLANTED corner wrought-iron ribs tapering inward from wide top (0.72) to narrower bottom (0.48)!
+    float r_cage_top = 0.72f;
+    float r_cage_bot = 0.48f;
+    for (int k = 0; k < NUM_LAMP_RIBS; k++) {
+        float angle = (float)k * ((float)M_PI * 0.5f) + ((float)M_PI * 0.25f);
+        float ca = cosf(angle), sa = sinf(angle);
+        g_lamp.ribs[k].p1 = (Vec3){lx + r_cage_bot * ca, 1.08f, lz + r_cage_bot * sa};
+        g_lamp.ribs[k].p2 = (Vec3){lx + r_cage_top * ca, 2.44f, lz + r_cage_top * sa};
+        g_lamp.ribs[k].radius = 0.060f;
+    }
+
+    // 2. The 4 Tall Skeletal Messengers emerging from the misty ground in an intimate circle under the lamp
+    // Spread slightly wider with gaunt slender torsos, long spindly necks & clearly articulated V-bent arms
+    // Messenger 0: Screen-Left (+X), looking inward & upward with skeletal arms raised in offering
+    g_messengers[0].obj_id     = OBJ_MSGR_BASE + 0;
+    g_messengers[0].head_pos   = (Vec3){ 1.56f, -1.42f, -0.15f};
+    g_messengers[0].head_radius = 0.45f;
+    g_messengers[0].jaw_pos    = (Vec3){ 1.38f, -1.78f, -0.15f};
+    g_messengers[0].jaw_radius = 0.24f;
+    g_messengers[0].neck_p1    = (Vec3){ 1.58f, -1.80f, -0.15f};
+    g_messengers[0].neck_p2    = (Vec3){ 1.72f, -2.52f, -0.18f};
+    g_messengers[0].shoulder_l = (Vec3){ 1.74f, -2.56f, -0.58f};
+    g_messengers[0].shoulder_r = (Vec3){ 1.66f, -2.56f,  0.22f};
+    g_messengers[0].torso_p1   = (Vec3){ 1.70f, -2.60f, -0.18f};
+    g_messengers[0].torso_p2   = (Vec3){ 1.82f, -4.22f, -0.22f};
+    g_messengers[0].elbow_l    = (Vec3){ 1.15f, -3.28f, -0.48f};
+    g_messengers[0].hand_l     = (Vec3){ 0.80f, -2.18f, -0.26f};
+    g_messengers[0].elbow_r    = (Vec3){ 1.12f, -3.25f,  0.18f};
+    g_messengers[0].hand_r     = (Vec3){ 0.78f, -2.14f,  0.04f};
+    g_messengers[0].yaw        = -1.85f;
+
+    // Messenger 1: Front-Center foreground (-Z), hunched skeletal back & ribcage visible, reaching up
+    g_messengers[1].obj_id     = OBJ_MSGR_BASE + 1;
+    g_messengers[1].head_pos   = (Vec3){ 0.14f, -1.62f, -1.42f};
+    g_messengers[1].head_radius = 0.45f;
+    g_messengers[1].jaw_pos    = (Vec3){ 0.14f, -1.96f, -1.24f};
+    g_messengers[1].jaw_radius = 0.24f;
+    g_messengers[1].neck_p1    = (Vec3){ 0.14f, -1.98f, -1.44f};
+    g_messengers[1].neck_p2    = (Vec3){ 0.14f, -2.66f, -1.58f};
+    g_messengers[1].shoulder_l = (Vec3){ 0.58f, -2.70f, -1.55f};
+    g_messengers[1].shoulder_r = (Vec3){-0.30f, -2.70f, -1.58f};
+    g_messengers[1].torso_p1   = (Vec3){ 0.14f, -2.74f, -1.58f};
+    g_messengers[1].torso_p2   = (Vec3){ 0.14f, -4.22f, -1.68f};
+    g_messengers[1].elbow_l    = (Vec3){ 0.72f, -3.48f, -1.08f};
+    g_messengers[1].hand_l     = (Vec3){ 0.46f, -2.42f, -0.68f};
+    g_messengers[1].elbow_r    = (Vec3){-0.44f, -3.48f, -1.10f};
+    g_messengers[1].hand_r     = (Vec3){-0.18f, -2.44f, -0.70f};
+    g_messengers[1].yaw        = 0.0f;
+
+    // Messenger 2: Screen-Right (-X), gaunt head tilted up toward lantern, bent arms raised
+    g_messengers[2].obj_id     = OBJ_MSGR_BASE + 2;
+    g_messengers[2].head_pos   = (Vec3){-1.15f, -1.52f, -0.25f};
+    g_messengers[2].head_radius = 0.44f;
+    g_messengers[2].jaw_pos    = (Vec3){-0.96f, -1.86f, -0.25f};
+    g_messengers[2].jaw_radius = 0.23f;
+    g_messengers[2].neck_p1    = (Vec3){-1.17f, -1.88f, -0.25f};
+    g_messengers[2].neck_p2    = (Vec3){-1.32f, -2.58f, -0.30f};
+    g_messengers[2].shoulder_l = (Vec3){-1.28f, -2.62f,  0.10f};
+    g_messengers[2].shoulder_r = (Vec3){-1.34f, -2.62f, -0.70f};
+    g_messengers[2].torso_p1   = (Vec3){-1.32f, -2.66f, -0.30f};
+    g_messengers[2].torso_p2   = (Vec3){-1.42f, -4.22f, -0.35f};
+    g_messengers[2].elbow_l    = (Vec3){-0.84f, -3.32f,  0.10f};
+    g_messengers[2].hand_l     = (Vec3){-0.48f, -2.28f, -0.02f};
+    g_messengers[2].elbow_r    = (Vec3){-0.86f, -3.34f, -0.56f};
+    g_messengers[2].hand_r     = (Vec3){-0.50f, -2.30f, -0.34f};
+    g_messengers[2].yaw        = 1.85f;
+
+    // Messenger 3: Rear-Center (+Z), eerie ghostly pale face staring forward toward camera & upward
+    g_messengers[3].obj_id     = OBJ_MSGR_BASE + 3;
+    g_messengers[3].head_pos   = (Vec3){ 0.14f, -1.16f,  1.22f};
+    g_messengers[3].head_radius = 0.47f;
+    g_messengers[3].jaw_pos    = (Vec3){ 0.14f, -1.54f,  1.06f};
+    g_messengers[3].jaw_radius = 0.25f;
+    g_messengers[3].neck_p1    = (Vec3){ 0.14f, -1.58f,  1.24f};
+    g_messengers[3].neck_p2    = (Vec3){ 0.14f, -2.30f,  1.32f};
+    g_messengers[3].shoulder_l = (Vec3){-0.30f, -2.34f,  1.30f};
+    g_messengers[3].shoulder_r = (Vec3){ 0.58f, -2.34f,  1.30f};
+    g_messengers[3].torso_p1   = (Vec3){ 0.14f, -2.38f,  1.32f};
+    g_messengers[3].torso_p2   = (Vec3){ 0.14f, -4.22f,  1.42f};
+    g_messengers[3].elbow_l    = (Vec3){-0.44f, -3.08f,  0.86f};
+    g_messengers[3].hand_l     = (Vec3){-0.18f, -2.12f,  0.58f};
+    g_messengers[3].elbow_r    = (Vec3){ 0.72f, -3.08f,  0.86f};
+    g_messengers[3].hand_r     = (Vec3){ 0.44f, -2.12f,  0.58f};
+    g_messengers[3].yaw        = 3.14159f;
+}
+
 static void init_scene(void) {
     memset(g_fire_heat, 0, sizeof(g_fire_heat));
     memset(g_next_fire, 0, sizeof(g_next_fire));
@@ -1443,6 +1730,8 @@ static void init_scene(void) {
 
     if (g_is_dark_souls) {
         build_dark_souls_scene();
+    } else if (g_is_bloodborne) {
+        build_bloodborne_scene();
     } else {
         g_num_bones = 0;
         build_stone_ring();
@@ -1729,6 +2018,528 @@ static bool intersect_sword(const Sword3D *sw, Vec3 ro, Vec3 rd, float *out_t, V
         *out_norm = best_norm;
         *out_heat = best_heat;
         *out_part = best_part;
+        return true;
+    }
+    return false;
+}
+
+static bool intersect_vertical_cylinder(float cx, float cz, float y_min, float y_max, float radius,
+                                       Vec3 ro, Vec3 rd,
+                                       float *out_t, Vec3 *out_pt, Vec3 *out_norm) {
+    float ox = ro.x - cx;
+    float oz = ro.z - cz;
+    float a = rd.x * rd.x + rd.z * rd.z;
+    float best_t = 1e9f;
+    Vec3 best_pt = {0}, best_norm = {0, 1, 0};
+    bool hit = false;
+
+    if (a > 1e-6f) {
+        float b = 2.0f * (ox * rd.x + oz * rd.z);
+        float c = ox * ox + oz * oz - radius * radius;
+        float disc = b * b - 4.0f * a * c;
+        if (disc >= 0.0f) {
+            float sdisc = sqrtf(disc);
+            float t0 = (-b - sdisc) / (2.0f * a);
+            float t1 = (-b + sdisc) / (2.0f * a);
+            if (t0 > 0.1f) {
+                float y = ro.y + rd.y * t0;
+                if (y >= y_min && y <= y_max) {
+                    best_t = t0;
+                    best_pt = (Vec3){ro.x + rd.x * t0, y, ro.z + rd.z * t0};
+                    best_norm = vec3_norm((Vec3){best_pt.x - cx, 0.0f, best_pt.z - cz});
+                    hit = true;
+                }
+            }
+            if (!hit && t1 > 0.1f) {
+                float y = ro.y + rd.y * t1;
+                if (y >= y_min && y <= y_max) {
+                    best_t = t1;
+                    best_pt = (Vec3){ro.x + rd.x * t1, y, ro.z + rd.z * t1};
+                    best_norm = vec3_norm((Vec3){best_pt.x - cx, 0.0f, best_pt.z - cz});
+                    hit = true;
+                }
+            }
+        }
+    }
+
+    // Flat caps at y_max and y_min
+    if (fabsf(rd.y) > 1e-5f) {
+        float t_top = (y_max - ro.y) / rd.y;
+        if (t_top > 0.1f && t_top < best_t) {
+            float x = ro.x + rd.x * t_top;
+            float z = ro.z + rd.z * t_top;
+            float dx = x - cx, dz = z - cz;
+            if (dx * dx + dz * dz <= radius * radius) {
+                best_t = t_top;
+                best_pt = (Vec3){x, y_max, z};
+                best_norm = (Vec3){0.0f, 1.0f, 0.0f};
+                hit = true;
+            }
+        }
+        float t_bot = (y_min - ro.y) / rd.y;
+        if (t_bot > 0.1f && t_bot < best_t) {
+            float x = ro.x + rd.x * t_bot;
+            float z = ro.z + rd.z * t_bot;
+            float dx = x - cx, dz = z - cz;
+            if (dx * dx + dz * dz <= radius * radius) {
+                best_t = t_bot;
+                best_pt = (Vec3){x, y_min, z};
+                best_norm = (Vec3){0.0f, -1.0f, 0.0f};
+                hit = true;
+            }
+        }
+    }
+
+    if (hit) {
+        *out_t = best_t;
+        *out_pt = best_pt;
+        *out_norm = best_norm;
+        return true;
+    }
+    return false;
+}
+
+static bool intersect_vertical_cone(float cx, float cz, float y_min, float y_max, float r_bottom, float r_top,
+                                    Vec3 ro, Vec3 rd,
+                                    float *out_t, Vec3 *out_pt, Vec3 *out_norm) {
+    float ox = ro.x - cx;
+    float oz = ro.z - cz;
+    float h = y_max - y_min;
+    float dr = (r_top - r_bottom) / h;
+    float y0 = ro.y - y_min;
+    float c_r0 = r_bottom + dr * y0;
+    float c_rd = dr * rd.y;
+
+    float a = (rd.x * rd.x + rd.z * rd.z) - c_rd * c_rd;
+    float b = 2.0f * ((ox * rd.x + oz * rd.z) - c_r0 * c_rd);
+    float c = (ox * ox + oz * oz) - c_r0 * c_r0;
+
+    float best_t = 1e9f;
+    Vec3 best_pt = {0}, best_norm = {0, 1, 0};
+    bool hit = false;
+
+    if (fabsf(a) > 1e-6f) {
+        float disc = b * b - 4.0f * a * c;
+        if (disc >= 0.0f) {
+            float sdisc = sqrtf(disc);
+            float t0 = (-b - sdisc) / (2.0f * a);
+            float t1 = (-b + sdisc) / (2.0f * a);
+            if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+            if (t0 > 0.1f) {
+                float y = ro.y + rd.y * t0;
+                if (y >= y_min && y <= y_max) {
+                    best_t = t0;
+                    best_pt = (Vec3){ro.x + rd.x * t0, y, ro.z + rd.z * t0};
+                    float r_y = r_bottom + dr * (y - y_min);
+                    best_norm = vec3_norm((Vec3){best_pt.x - cx, -dr * r_y, best_pt.z - cz});
+                    hit = true;
+                }
+            }
+            if (!hit && t1 > 0.1f) {
+                float y = ro.y + rd.y * t1;
+                if (y >= y_min && y <= y_max) {
+                    best_t = t1;
+                    best_pt = (Vec3){ro.x + rd.x * t1, y, ro.z + rd.z * t1};
+                    float r_y = r_bottom + dr * (y - y_min);
+                    best_norm = vec3_norm((Vec3){best_pt.x - cx, -dr * r_y, best_pt.z - cz});
+                    hit = true;
+                }
+            }
+        }
+    }
+
+    // Flat caps at y_min and y_max
+    if (fabsf(rd.y) > 1e-5f) {
+        if (r_bottom > 0.02f) {
+            float t_bot = (y_min - ro.y) / rd.y;
+            if (t_bot > 0.1f && t_bot < best_t) {
+                float x = ro.x + rd.x * t_bot;
+                float z = ro.z + rd.z * t_bot;
+                float dx = x - cx, dz = z - cz;
+                if (dx * dx + dz * dz <= r_bottom * r_bottom) {
+                    best_t = t_bot;
+                    best_pt = (Vec3){x, y_min, z};
+                    best_norm = (Vec3){0.0f, -1.0f, 0.0f};
+                    hit = true;
+                }
+            }
+        }
+        if (r_top > 0.02f) {
+            float t_top = (y_max - ro.y) / rd.y;
+            if (t_top > 0.1f && t_top < best_t) {
+                float x = ro.x + rd.x * t_top;
+                float z = ro.z + rd.z * t_top;
+                float dx = x - cx, dz = z - cz;
+                if (dx * dx + dz * dz <= r_top * r_top) {
+                    best_t = t_top;
+                    best_pt = (Vec3){x, y_max, z};
+                    best_norm = (Vec3){0.0f, 1.0f, 0.0f};
+                    hit = true;
+                }
+            }
+        }
+    }
+
+    if (hit) {
+        *out_t = best_t;
+        *out_pt = best_pt;
+        *out_norm = best_norm;
+        return true;
+    }
+    return false;
+}
+
+static bool intersect_bell(const LampBell *b, Vec3 ro, Vec3 rd,
+                           float *out_t, Vec3 *out_pt, Vec3 *out_norm, bool *out_interior) {
+    Vec3 ax = b->axis;
+    Vec3 ref = (fabsf(ax.y) < 0.85f) ? (Vec3){0.0f, 1.0f, 0.0f} : (Vec3){1.0f, 0.0f, 0.0f};
+    Vec3 u = vec3_norm(vec3_cross(ax, ref));
+    Vec3 v = vec3_cross(ax, u);
+
+    Vec3 rel = vec3_sub(ro, b->apex);
+    Vec3 lro = (Vec3){ vec3_dot(rel, u), vec3_dot(rel, ax), vec3_dot(rel, v) };
+    Vec3 lrd = (Vec3){ vec3_dot(rd,  u), vec3_dot(rd,  ax), vec3_dot(rd,  v) };
+
+    float dr = (b->r_bot - b->r_top) / b->length;
+    float c_r0 = b->r_top + dr * lro.y;
+    float c_rd = dr * lrd.y;
+
+    float qa = (lrd.x * lrd.x + lrd.z * lrd.z) - c_rd * c_rd;
+    float qb = 2.0f * ((lro.x * lrd.x + lro.z * lrd.z) - c_r0 * c_rd);
+    float qc = (lro.x * lro.x + lro.z * lro.z) - c_r0 * c_r0;
+
+    float best_t = 1e9f;
+    Vec3 best_pt = {0}, best_norm = {0, 1, 0};
+    bool is_int = false;
+    bool hit = false;
+
+    if (fabsf(qa) > 1e-6f) {
+        float disc = qb * qb - 4.0f * qa * qc;
+        if (disc >= 0.0f) {
+            float sdisc = sqrtf(disc);
+            float t0 = (-qb - sdisc) / (2.0f * qa);
+            float t1 = (-qb + sdisc) / (2.0f * qa);
+            if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+            for (int k = 0; k < 2; k++) {
+                float tc = (k == 0) ? t0 : t1;
+                if (tc > 0.1f && tc < best_t) {
+                    float ly = lro.y + lrd.y * tc;
+                    if (ly >= 0.0f && ly <= b->length) {
+                        float lx = lro.x + lrd.x * tc;
+                        float lz = lro.z + lrd.z * tc;
+                        float r_y = b->r_top + dr * ly;
+                        Vec3 lnorm = vec3_norm((Vec3){lx, -dr * r_y, lz});
+                        best_t = tc;
+                        best_pt = vec3_add(ro, vec3_scale(rd, tc));
+                        best_norm = vec3_norm(vec3_add(vec3_add(vec3_scale(u, lnorm.x), vec3_scale(ax, lnorm.y)), vec3_scale(v, lnorm.z)));
+                        is_int = false;
+                        hit = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Open bell mouth plane at ly == b->length: bright brass outer rim + dark hollow inner cavity!
+    if (fabsf(lrd.y) > 1e-5f) {
+        float tm = (b->length - lro.y) / lrd.y;
+        if (tm > 0.1f && tm < best_t) {
+            float lx = lro.x + lrd.x * tm;
+            float lz = lro.z + lrd.z * tm;
+            float r2 = lx * lx + lz * lz;
+            float rim_r = b->r_bot * 1.08f;
+            if (r2 <= rim_r * rim_r) {
+                best_t = tm;
+                best_pt = vec3_add(ro, vec3_scale(rd, tm));
+                best_norm = ax;
+                // Hollow dark mouth interior (except tiny brass clapper dot at very center r < 0.24*r_bot!)
+                float r = sqrtf(r2);
+                is_int = (r < b->r_bot * 0.72f && r > b->r_bot * 0.22f);
+                hit = true;
+            }
+        }
+    }
+
+    if (hit) {
+        *out_t = best_t;
+        *out_pt = best_pt;
+        *out_norm = best_norm;
+        *out_interior = is_int;
+        return true;
+    }
+    return false;
+}
+
+static bool intersect_lamp(const Lamp3D *lp, Vec3 ro, Vec3 rd,
+                           float *out_t, Vec3 *out_pt, Vec3 *out_norm, int *out_part) {
+    if (!lp->active) return false;
+
+    // Fast broad bounding capsule encompassing pillar + diagonal arm + bell cluster + suspended lantern
+    Vec3 b_pt, b_norm;
+    float b_t;
+    if (!intersect_capsule((Vec3){-0.45f, -4.35f, 0.0f}, (Vec3){-0.45f, 4.95f, 0.0f}, 2.45f, ro, rd, &b_t, &b_pt, &b_norm)) {
+        return false;
+    }
+
+    float best_t = 1e9f;
+    Vec3 best_pt = {0}, best_norm = {0, 1, 0};
+    int best_part = 0; // 0: pole/iron/chains, 1: wax stub, 2: ornate dome/cup, 3: finial, 4: brass bell, 5: ghostly core, 6: dark bell interior
+    bool hit = false;
+
+    float lx = lp->lantern_pos.x;
+    float lz = lp->lantern_pos.z;
+
+    // 1. Vertical pillar & diagonal angled gallows arm
+    for (int i = 0; i < NUM_LAMP_POLE_SEGS; i++) {
+        float t; Vec3 pt, norm;
+        if (intersect_capsule(lp->pole_segs[i].p1, lp->pole_segs[i].p2, lp->pole_segs[i].radius, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+        }
+    }
+
+    // 1b. Ornate flared architectural capital flange on the vertical pole beside the lantern
+    {
+        float t; Vec3 pt, norm;
+        float cx = lp->capital_pos.x, cy = lp->capital_pos.y, cz = lp->capital_pos.z;
+        if (intersect_vertical_cone(cx, cz, cy - 0.18f, cy + 0.04f, 0.20f, 0.38f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        if (intersect_vertical_cylinder(cx, cz, cy + 0.04f, cy + 0.16f, 0.42f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+    }
+
+    // 2. Thick iron/leather binding straps wrapped along diagonal arm
+    for (int i = 0; i < 3; i++) {
+        float t; Vec3 pt, norm;
+        if (intersect_capsule(lp->straps[i].p1, lp->straps[i].p2, lp->straps[i].radius, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+    }
+
+    // 3. Cluster of 3 oriented antique brass bells at the top tip of the diagonal arm!
+    for (int b = 0; b < NUM_LAMP_BELLS; b++) {
+        float t; Vec3 pt, norm; bool is_int = false;
+        if (intersect_bell(&lp->bells[b], ro, rd, &t, &pt, &norm, &is_int)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm;
+                best_part = is_int ? 6 : 4;
+                hit = true;
+            }
+        }
+    }
+
+    // 4. Suspension chain, vertical dangling chain & draped side slack chain
+    {
+        float t; Vec3 pt, norm;
+        if (intersect_capsule(lp->top_hook.p1, lp->top_hook.p2, lp->top_hook.radius, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+        }
+        if (intersect_capsule(lp->bottom_chain.p1, lp->bottom_chain.p2, lp->bottom_chain.radius, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+        }
+        for (int i = 0; i < NUM_LAMP_CHAINS; i++) {
+            if (intersect_capsule(lp->slack_chains[i].p1, lp->slack_chains[i].p2, lp->slack_chains[i].radius, ro, rd, &t, &pt, &norm)) {
+                if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+            }
+        }
+    }
+
+    // 5. Tall Ornate Tiered Gothic Lantern Cap (Filigree Crown + Pointed Dome + Flared Eaves)
+    {
+        float t; Vec3 pt, norm;
+        // Top suspension ring finial
+        if (intersect_vertical_cylinder(lx, lz, 3.20f, 3.36f, 0.15f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 3; hit = true; }
+        }
+        // Tall pointed gothic spire crown
+        if (intersect_vertical_cone(lx, lz, 2.84f, 3.22f, 0.46f, 0.14f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        // Ornate domed mid-tier hood
+        if (intersect_vertical_cone(lx, lz, 2.52f, 2.86f, 0.80f, 0.44f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        // Wide scalloped eaves cornice lip
+        if (intersect_vertical_cylinder(lx, lz, 2.42f, 2.52f, 0.88f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+        }
+    }
+
+    // 6. Tall Tapered Open Glass Chamber: 4 slanted inward-tapering wrought-iron corner ribs
+    for (int k = 0; k < NUM_LAMP_RIBS; k++) {
+        float t; Vec3 pt, norm;
+        if (intersect_capsule(lp->ribs[k].p1, lp->ribs[k].p2, lp->ribs[k].radius, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+        }
+    }
+
+    // 7. Interior Candle Stub & Tall Blazing Two-Tone Ghostly Core (when lit!)
+    {
+        float t; Vec3 pt, norm;
+        if (intersect_vertical_cylinder(lx, lz, 1.12f, 1.38f, 0.13f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 1; hit = true; }
+        }
+        if (g_bonfire_lit) {
+            float sway = sinf(g_anim_time * 9.0f) * 0.025f;
+            float core_r = (g_fire_state == FIRE_STATE_SMOLDERING_REST) ? 0.15f : 0.24f;
+            Vec3 c_p1 = (Vec3){lx, 1.44f, lz};
+            Vec3 c_p2 = (Vec3){lx + sway, 2.18f, lz};
+            if (intersect_capsule(c_p1, c_p2, core_r, ro, rd, &t, &pt, &norm)) {
+                if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 5; hit = true; }
+            }
+        }
+    }
+
+    // 8. Ornate Ribbed Bottom Gallery Bowl & Scalloped Gothic Drop Finial
+    {
+        float t; Vec3 pt, norm;
+        // Narrower lower collar rim (matching tapered cage bottom!)
+        if (intersect_vertical_cylinder(lx, lz, 0.98f, 1.10f, 0.62f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 0; hit = true; }
+        }
+        // Ornate bulged gallery band
+        if (intersect_vertical_cone(lx, lz, 0.78f, 0.99f, 0.54f, 0.66f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        // Tapered scalloped bottom cup
+        if (intersect_vertical_cone(lx, lz, 0.56f, 0.79f, 0.20f, 0.54f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 2; hit = true; }
+        }
+        // Pointed gothic drop finial
+        if (intersect_vertical_cone(lx, lz, 0.34f, 0.57f, 0.05f, 0.18f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_part = 3; hit = true; }
+        }
+    }
+
+    if (hit) {
+        *out_t = best_t;
+        *out_pt = best_pt;
+        *out_norm = best_norm;
+        *out_part = best_part;
+        return true;
+    }
+    return false;
+}
+
+static bool intersect_messengers(const Messenger3D *msgrs, int count, Vec3 ro, Vec3 rd,
+                                 float *out_t, Vec3 *out_pt, Vec3 *out_norm, float *out_feature, int *out_id) {
+    float best_t = 1e9f;
+    Vec3 best_pt = {0}, best_norm = {0, 1, 0};
+    float best_feat = 0.0f; // 0.0: skull/bone, 0.25: limb/neck, 0.60: ribcage groove, 1.0: deep eye/mouth void
+    int best_id = 0;
+    bool hit = false;
+
+    for (int i = 0; i < count; i++) {
+        const Messenger3D *m = &msgrs[i];
+        float t; Vec3 pt, norm;
+
+        // 1. Bulbous elongated pale cranium (slightly ovoid tall skull silhouette)
+        Vec3 skull_top = (Vec3){m->head_pos.x, m->head_pos.y + 0.14f, m->head_pos.z};
+        if (intersect_capsule(m->head_pos, skull_top, m->head_radius * 0.88f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm; best_id = m->obj_id;
+
+                Vec3 fwd_face = vec3_norm((Vec3){ sinf(m->yaw), 0.14f, cosf(m->yaw) });
+                Vec3 rgt_face = (Vec3){ cosf(m->yaw), 0.0f, -sinf(m->yaw) };
+                Vec3 rel = vec3_sub(pt, m->head_pos);
+                float face_dot = vec3_dot(rel, fwd_face);
+                float rgt_dot = vec3_dot(rel, rgt_face);
+                float up_dot = rel.y;
+
+                float feat = 0.0f;
+                // Two huge hollow sunken dark eye sockets
+                if (face_dot > 0.20f && up_dot >= -0.02f && up_dot <= 0.19f) {
+                    if (fabsf(rgt_dot - 0.16f) < 0.095f || fabsf(rgt_dot + 0.16f) < 0.095f) {
+                        feat = 1.0f;
+                    }
+                }
+                // Nasal cavity slit
+                if (face_dot > 0.28f && up_dot >= -0.14f && up_dot <= -0.02f && fabsf(rgt_dot) < 0.045f) {
+                    feat = 0.95f;
+                }
+                // Hollow grimacing mouth void
+                if (face_dot > 0.20f && up_dot >= -0.32f && up_dot <= -0.16f && fabsf(rgt_dot) < 0.12f) {
+                    feat = 1.0f;
+                }
+
+                best_feat = feat;
+                hit = true;
+            }
+        }
+
+        // 2. Narrower gaunt jaw / chin
+        if (intersect_capsule(m->jaw_pos, m->jaw_pos, m->jaw_radius, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm; best_id = m->obj_id;
+                Vec3 fwd_face = vec3_norm((Vec3){ sinf(m->yaw), 0.14f, cosf(m->yaw) });
+                Vec3 rgt_face = (Vec3){ cosf(m->yaw), 0.0f, -sinf(m->yaw) };
+                Vec3 rel = vec3_sub(pt, m->jaw_pos);
+                float feat = 0.10f;
+                if (vec3_dot(rel, fwd_face) > 0.10f && rel.y > -0.04f && fabsf(vec3_dot(rel, rgt_face)) < 0.11f) {
+                    feat = 1.0f; // Open screaming/grimacing mouth cavity
+                }
+                best_feat = feat;
+                hit = true;
+            }
+        }
+
+        // 3. Iconic long thin spindly neck
+        if (intersect_capsule(m->neck_p1, m->neck_p2, 0.115f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.22f; best_id = m->obj_id; hit = true;
+            }
+        }
+
+        // 4. Broad bony clavicle / hunched shoulders bar
+        if (intersect_capsule(m->shoulder_l, m->shoulder_r, 0.185f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.08f; best_id = m->obj_id; hit = true;
+            }
+        }
+
+        // 5. Gaunt skeletal ribcage torso tapering into ground mist
+        if (intersect_capsule(m->torso_p1, m->torso_p2, 0.25f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) {
+                best_t = t; best_pt = pt; best_norm = norm; best_id = m->obj_id;
+                float rib_wave = sinf(pt.y * 22.0f);
+                float feat = 0.16f;
+                if (pt.y > -3.72f && pt.y < -2.62f && rib_wave < -0.15f) {
+                    feat = 0.62f; // Horizontal dark intercostal rib shadow groove
+                }
+                best_feat = feat;
+                hit = true;
+            }
+        }
+
+        // 6. Articulated bent skeletal arms (upper arm + upward-raised forearm + raised hand)
+        if (intersect_capsule(m->shoulder_l, m->elbow_l, 0.105f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.26f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->elbow_l, m->hand_l, 0.090f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.20f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->hand_l, (Vec3){m->hand_l.x, m->hand_l.y + 0.14f, m->hand_l.z}, 0.125f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.12f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->shoulder_r, m->elbow_r, 0.105f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.26f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->elbow_r, m->hand_r, 0.090f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.20f; best_id = m->obj_id; hit = true; }
+        }
+        if (intersect_capsule(m->hand_r, (Vec3){m->hand_r.x, m->hand_r.y + 0.14f, m->hand_r.z}, 0.125f, ro, rd, &t, &pt, &norm)) {
+            if (t < best_t) { best_t = t; best_pt = pt; best_norm = norm; best_feat = 0.12f; best_id = m->obj_id; hit = true; }
+        }
+    }
+
+    if (hit) {
+        *out_t = best_t;
+        *out_pt = best_pt;
+        *out_norm = best_norm;
+        *out_feature = best_feat;
+        *out_id = best_id;
         return true;
     }
     return false;
@@ -2128,14 +2939,16 @@ static void update_simulation(void) {
                     g_rest_duration = g_short_break_duration;
                     g_banner_type = BANNER_REST;
                 }
-                g_banner_timer = 4.0f;
+                g_banner_timer = 3.6f;
                 play_alert_sound();
                 send_system_notification("Bonfire Pomodoro", g_is_long_break ? "Focus complete! Time for a long rest." : "Focus complete! Rest at the bonfire.");
                 if (!g_cycle_logged) {
                     g_cycle_logged = true;
                     int target_min = (int)(g_focus_duration / 60.0f);
                     char mode_desc[64];
-                    if (g_is_dark_souls) {
+                    if (g_is_bloodborne) {
+                        snprintf(mode_desc, sizeof(mode_desc), "Bloodborne Hunter's Lamp (Session %02d)", g_pomodoro_cycles_done);
+                    } else if (g_is_dark_souls) {
                         snprintf(mode_desc, sizeof(mode_desc), "Dark Souls Bonfire (Session %02d)", g_pomodoro_cycles_done);
                     } else {
                         snprintf(mode_desc, sizeof(mode_desc), "Teepee %s (Session %02d)", WOOD_SPECIES[g_wood_type].name, g_pomodoro_cycles_done);
@@ -2159,7 +2972,7 @@ static void update_simulation(void) {
     }
 
     // Auto-replenish wood during active focus in standard fireplace mode
-    if (!g_is_dark_souls && g_fire_state == FIRE_STATE_LIT_FOCUS && !g_pomodoro_paused && g_modal_active == MODAL_NONE) {
+    if (!g_is_dark_souls && !g_is_bloodborne && g_fire_state == FIRE_STATE_LIT_FOCUS && !g_pomodoro_paused && g_modal_active == MODAL_NONE) {
         g_auto_wood_check_timer += real_dt;
         if (g_auto_wood_check_timer >= 2.0f) {
             g_auto_wood_check_timer = 0.0f;
@@ -2214,7 +3027,7 @@ static void update_simulation(void) {
 
     Vec3 kindle_pos = (Vec3){0.0f, -2.6f, 0.0f};
 
-    if (!g_is_dark_souls) for (int step = 0; step < num_substeps; step++) {
+    if (!g_is_dark_souls && !g_is_bloodborne) for (int step = 0; step < num_substeps; step++) {
         float cur_sim_t = g_sim_time - dt + (step + 1) * step_dt;
         float kindle_heat = 0.0f;
         if (cur_sim_t < 240.0f) {
@@ -2462,7 +3275,7 @@ static void update_simulation(void) {
         float burnt_mass = 1.0f - avg_mass;
         g_burnt_mass = burnt_mass;
 
-        if (!g_is_dark_souls) {
+        if (!g_is_dark_souls && !g_is_bloodborne) {
             float target_height = fminf(1.4f, 0.35f + burnt_mass * 0.85f + g_ash_bed.volume);
             float smooth_rate = 1.0f - expf(-step_dt * 0.8f);
             g_ash_bed.height += (target_height - g_ash_bed.height) * smooth_rate;
@@ -2764,7 +3577,7 @@ static void update_simulation(void) {
     }
 
     // Post-extinction thin delicate wispy smoke drifting from cool ash bed
-    if (!g_is_dark_souls && g_sim_time >= 3000.0f && g_sim_time < 3350.0f) {
+    if (!g_is_dark_souls && !g_is_bloodborne && g_sim_time >= 3000.0f && g_sim_time < 3350.0f) {
         if (rand_f() < 0.12f) {
             Vec3 ash_c = (Vec3){(rand_f() - 0.5f) * 1.5f, -4.1f, (rand_f() - 0.5f) * 1.5f};
             Vec3 smk_v = (Vec3){
@@ -2800,8 +3613,8 @@ static void update_simulation(void) {
     // -------------------------------------------------------------------------
     // STRICT FIRE PROJECTION: Heat originates strictly from burning wood & kindling
     // -------------------------------------------------------------------------
-    Vec3 target = (Vec3){0.0f, g_is_dark_souls ? 1.25f : -1.2f, 0.0f};
-    float cam_dist = g_is_dark_souls ? 25.2f : 28.0f;
+    Vec3 target = (Vec3){0.0f, g_is_bloodborne ? 0.05f : (g_is_dark_souls ? 1.25f : -1.2f), 0.0f};
+    float cam_dist = g_is_bloodborne ? 23.5f : (g_is_dark_souls ? 25.2f : 28.0f);
     Vec3 cam_pos = (Vec3){
         cam_dist * cosf(g_cam_pitch) * sinf(g_cam_yaw),
         target.y + cam_dist * sinf(g_cam_pitch),
@@ -2812,8 +3625,8 @@ static void update_simulation(void) {
     Vec3 right = vec3_norm(vec3_cross(fwd, up_w));
     Vec3 up = vec3_cross(right, fwd);
 
-    float world_w = g_is_dark_souls ? 21.6f : 22.0f;
-    float world_h = g_is_dark_souls ? 16.2f : 14.0f;
+    float world_h = g_is_bloodborne ? 12.8f : (g_is_dark_souls ? 16.2f : 14.0f);
+    float world_w = g_is_bloodborne ? (world_h * ((float)g_pixel_w / (float)g_pixel_h)) : (g_is_dark_souls ? 21.6f : 22.0f);
 
     // Reset next fire frame and depth buffer
     memset(g_next_fire, 0, sizeof(g_next_fire));
@@ -2911,6 +3724,30 @@ static void update_simulation(void) {
                 }
             }
         }
+    } else if (g_is_bloodborne) {
+        if (g_bonfire_lit) {
+            Vec3 p_flame = g_lamp.flame_pos;
+            Vec3 rel = vec3_sub(p_flame, cam_pos);
+            int kx = (int)(((vec3_dot(rel, right) / world_w) + 0.5f) * g_pixel_w);
+            int ky = (int)((0.5f - (vec3_dot(rel, up) / world_h)) * g_pixel_h);
+            float kz = vec3_dot(rel, fwd);
+            float flicker = 0.88f + 0.14f * sinf(g_anim_time * 11.0f) + 0.08f * cosf(g_anim_time * 7.5f);
+            float val = (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.50f : 1.0f) * flicker;
+
+            for (int dy = -3; dy <= 2; dy++) {
+                for (int dx = -3; dx <= 3; dx++) {
+                    int px = kx + dx, py = ky + dy;
+                    if (px >= 0 && px < g_pixel_w && py >= 0 && py < g_pixel_h) {
+                        float d = sqrtf((float)(dx * dx) * 1.15f + (float)(dy * dy) * 1.10f);
+                        if (d < 3.1f) {
+                            float h = val * (1.0f - d / 3.1f);
+                            g_fire_heat[py][px] = fmaxf(g_fire_heat[py][px], h);
+                            if (kz - 0.10f < g_fire_z[py][px]) g_fire_z[py][px] = kz - 0.10f;
+                        }
+                    }
+                }
+            }
+        }
     } else {
         // 1. Kindling flames emitted directly from twigs and leaves on the hearth floor!
         float cur_kindle_heat = (g_sim_time < 240.0f) ? (g_sim_time < 60.0f ? 1.0f : fmaxf(0.0f, 1.0f - (g_sim_time - 60.0f) / 180.0f)) : 0.0f;
@@ -2986,7 +3823,12 @@ static void update_simulation(void) {
     for (int y = g_pixel_h - 4; y >= 2; y--) {
         for (int x = 0; x < g_pixel_w; x++) {
             float below;
-            if (g_is_dark_souls) {
+            if (g_is_bloodborne) {
+                int left = (x > 0) ? x - 1 : 0;
+                int right = (x < g_pixel_w - 1) ? x + 1 : g_pixel_w - 1;
+                below = g_fire_heat[y + 1][x] * 0.70f +
+                        (g_fire_heat[y + 1][left] + g_fire_heat[y + 1][right]) * 0.15f;
+            } else if (g_is_dark_souls) {
                 int left = (x > 0) ? x - 1 : 0;
                 int right = (x < g_pixel_w - 1) ? x + 1 : g_pixel_w - 1;
                 float drift = sinf(g_anim_time * 5.0f + y * 0.30f);
@@ -3011,7 +3853,8 @@ static void update_simulation(void) {
                 continue;
             }
 
-            float decay = g_is_dark_souls ? (0.018f + 0.014f * rand_f()) : (0.032f + 0.030f * rand_f());
+            float decay = g_is_bloodborne ? (0.140f + 0.070f * rand_f()) :
+                          (g_is_dark_souls ? (0.018f + 0.014f * rand_f()) : (0.032f + 0.030f * rand_f()));
             float val = fmaxf(0.0f, below - decay);
             g_next_fire[y][x] = val;
             if (val > 0.05f) {
@@ -3058,6 +3901,37 @@ static void update_simulation(void) {
                 spawn_spark_3d(p_ash, v_ash, rand_range(18, 40), PALETTE_EMBERS[rand_range(2, 4)]);
             }
         }
+    } else if (g_is_bloodborne) {
+        if (g_bonfire_lit) {
+            // Subtle pale ghostly motes drifting around the suspended lantern
+            if (rand_f() < 0.22f) {
+                Vec3 p_c = (Vec3){
+                    g_lamp.flame_pos.x + (rand_f() - 0.5f) * 1.4f,
+                    g_lamp.flame_pos.y + (rand_f() - 0.5f) * 1.0f,
+                    g_lamp.flame_pos.z + (rand_f() - 0.5f) * 1.4f
+                };
+                Vec3 v_c = (Vec3){ (rand_f() - 0.5f) * 0.25f, rand_f() * 0.55f + 0.25f, (rand_f() - 0.5f) * 0.25f };
+                spawn_spark_3d(p_c, v_c, rand_range(22, 48), PALETTE_SPECTRAL[rand_range(2, 4)]);
+            }
+            // Ethereal ghostly dust motes floating slowly up from the Messengers into the dark night
+            float mote_prob = (g_fire_state == FIRE_STATE_SMOLDERING_REST) ? 0.20f : 0.48f;
+            if (rand_f() < mote_prob) {
+                int m_idx = rand_range(0, NUM_MESSENGERS - 1);
+                Vec3 base_pos = g_messengers[m_idx].head_pos;
+                Vec3 p_mote = (Vec3){
+                    base_pos.x + (rand_f() - 0.5f) * 1.4f,
+                    base_pos.y - 1.2f + rand_f() * 1.8f,
+                    base_pos.z + (rand_f() - 0.5f) * 1.4f
+                };
+                Vec3 v_mote = (Vec3){
+                    (rand_f() - 0.5f) * 0.22f + sinf(p_mote.y * 2.5f + g_anim_time * 2.0f) * 0.16f,
+                    rand_f() * 0.55f + 0.30f,
+                    (rand_f() - 0.5f) * 0.22f
+                };
+                RGB mote_col = PALETTE_SPECTRAL[rand_range(1, 3)];
+                spawn_spark_3d(p_mote, v_mote, rand_range(28, 60), mote_col);
+            }
+        }
     } else if (g_sim_time < 2900.0f && rand_f() < (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.20f : 0.65f)) {
         for (int i = 0; i < g_num_logs; i++) {
             int s = rand_range(0, NUM_LOG_SEGS - 1);
@@ -3071,7 +3945,7 @@ static void update_simulation(void) {
         }
     }
 
-    if (g_fire_state == FIRE_STATE_EXTINGUISHED || (!g_is_dark_souls && g_sim_time >= 3000.0f)) {
+    if (g_fire_state == FIRE_STATE_EXTINGUISHED || (!g_is_dark_souls && !g_is_bloodborne && g_sim_time >= 3000.0f)) {
         memset(g_fire_heat, 0, sizeof(g_fire_heat));
         for (int i = 0; i < MAX_SPARKS; i++) g_sparks[i].active = false;
     }
@@ -3116,6 +3990,7 @@ static void render_scene(void) {
     for (int y = 0; y < g_pixel_h; y++) {
         for (int x = 0; x < g_pixel_w; x++) {
             g_frame[y][x].is_sky = true;
+            g_frame[y][x].shade = 0;
             g_frame[y][x].color = COLOR_BLACK;
             g_id_buf[y][x] = 0;
             g_depth_buf[y][x] = 1e9f;
@@ -3124,8 +3999,8 @@ static void render_scene(void) {
     }
 
     // Compute Camera Vectors
-    Vec3 target = (Vec3){0.0f, g_is_dark_souls ? 1.25f : -1.2f, 0.0f};
-    float cam_dist = g_is_dark_souls ? 25.2f : 28.0f;
+    Vec3 target = (Vec3){0.0f, g_is_bloodborne ? 0.05f : (g_is_dark_souls ? 1.25f : -1.2f), 0.0f};
+    float cam_dist = g_is_bloodborne ? 23.5f : (g_is_dark_souls ? 25.2f : 28.0f);
     Vec3 cam_pos = (Vec3){
         cam_dist * cosf(g_cam_pitch) * sinf(g_cam_yaw),
         target.y + cam_dist * sinf(g_cam_pitch),
@@ -3136,11 +4011,14 @@ static void render_scene(void) {
     Vec3 right = vec3_norm(vec3_cross(fwd, up_w));
     Vec3 up = vec3_cross(right, fwd);
 
-    float world_w = g_is_dark_souls ? 21.6f : 22.0f;
-    float world_h = g_is_dark_souls ? 16.2f : 14.0f;
+    float world_h = g_is_bloodborne ? 12.8f : (g_is_dark_souls ? 16.2f : 14.0f);
+    float world_w = g_is_bloodborne ? (world_h * ((float)g_pixel_w / (float)g_pixel_h)) : (g_is_dark_souls ? 21.6f : 22.0f);
 
     // Fire point light positioned in the hearth core with organic flicker
     float fire_activity = fmaxf(g_ash_bed.heat, 0.0f);
+    if (g_is_bloodborne) {
+        fire_activity = g_bonfire_lit ? (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.45f : 1.0f) : 0.15f;
+    }
     for (int i = 0; i < g_num_logs; i++) {
         for (int s = 0; s < NUM_LOG_SEGS; s++) {
             if (g_logs[i].segments[s].temp > 0.25f && g_logs[i].segments[s].moisture <= 0.05f) {
@@ -3149,9 +4027,9 @@ static void render_scene(void) {
         }
     }
     float flicker = (1.0f + 0.22f * sinf(g_anim_time * 8.5f + sinf(g_anim_time * 17.0f)) + 0.14f * cosf(g_anim_time * 12.0f)) * fire_activity;
-    Vec3 light_pos = (Vec3){0.0f, g_is_dark_souls ? -1.5f : -1.8f, 0.0f};
+    Vec3 light_pos = g_is_bloodborne ? g_lamp.flame_pos : (Vec3){0.0f, g_is_dark_souls ? -1.5f : -1.8f, 0.0f};
     float light_intensity = 2.6f * flicker;
-    if (g_is_dark_souls && !g_bonfire_lit) {
+    if ((g_is_dark_souls || g_is_bloodborne) && !g_bonfire_lit) {
         light_intensity = 0.40f;
     }
 
@@ -3299,6 +4177,52 @@ static void render_scene(void) {
                 }
             }
 
+            // Test 3D Hunter's Lamp (Bloodborne Mode)
+            Vec3 lamp_pt = {0,0,0}, lamp_norm = {0,1,0};
+            int lamp_part = 0;
+            if (g_is_bloodborne && g_lamp.active) {
+                float t;
+                Vec3 pt, norm;
+                int part;
+                if (intersect_lamp(&g_lamp, ray_orig, ray_dir, &t, &pt, &norm, &part)) {
+                    if (t < closest_t) {
+                        closest_t = t;
+                        lamp_pt = pt;
+                        lamp_norm = norm;
+                        lamp_part = part;
+                        hit_type = 9;
+                    }
+                }
+            }
+
+            // Test 3D Messengers (Bloodborne Mode: hidden while unlit, rise smoothly out of flagstones on ignition!)
+            Vec3 msgr_pt = {0,0,0}, msgr_norm = {0,1,0};
+            float msgr_feat = 0.0f;
+            int msgr_id = 0;
+            if (g_is_bloodborne && g_bonfire_lit) {
+                float msgr_y_off = 0.0f;
+                if (g_ignition_timer > 0.0f && g_ignition_timer < 1.25f) {
+                    float rt = g_ignition_timer / 1.25f;
+                    rt = rt * rt * (3.0f - 2.0f * rt);
+                    msgr_y_off = -3.1f * (1.0f - rt);
+                }
+                Vec3 m_ro = (Vec3){ray_orig.x, ray_orig.y - msgr_y_off, ray_orig.z};
+                float t, feat;
+                Vec3 pt, norm;
+                int id;
+                if (intersect_messengers(g_messengers, NUM_MESSENGERS, m_ro, ray_dir, &t, &pt, &norm, &feat, &id)) {
+                    pt.y += msgr_y_off;
+                    if (pt.y >= -4.20f && t < closest_t) {
+                        closest_t = t;
+                        msgr_pt = pt;
+                        msgr_norm = norm;
+                        msgr_feat = feat;
+                        msgr_id = id;
+                        hit_type = 10;
+                    }
+                }
+            }
+
             // Test Ash Bed / Ground Plane
             Vec3 ash_bed_pt = {0,0,0}, ash_bed_norm = {0,1,0};
             if (g_is_dark_souls) {
@@ -3342,6 +4266,35 @@ static void render_scene(void) {
                             ash_bed_pt = gp_pt;
                             ash_bed_norm = (Vec3){0.0f, 1.0f, 0.0f};
                             hit_type = 3;
+                        }
+                    }
+                }
+            } else if (g_is_bloodborne) {
+                float ground_plane_y = -4.2f;
+                if (ray_dir.y < -0.001f) {
+                    float gp_t = (ground_plane_y - ray_orig.y) / ray_dir.y;
+                    if (gp_t > 0.1f && gp_t < closest_t) {
+                        Vec3 gp_pt = vec3_add(ray_orig, vec3_scale(ray_dir, gp_t));
+                        float dx_c = gp_pt.x - g_lamp.lantern_pos.x;
+                        float dz_c = gp_pt.z - g_lamp.lantern_pos.z;
+                        float gp_r = sqrtf(dx_c * dx_c + dz_c * dz_c);
+                        float ang = atan2f(dz_c, dx_c);
+                        float r_solid = 3.15f + 0.28f * sinf(ang * 3.0f + 0.6f) + 0.16f * cosf(ang * 5.0f);
+                        if (gp_r < r_solid) {
+                            closest_t = gp_t;
+                            ash_bed_pt = gp_pt;
+                            ash_bed_norm = (Vec3){0.0f, 1.0f, 0.0f};
+                            hit_type = 3;
+                        } else if (gp_r < r_solid + 1.25f && hit_type == 0) {
+                            // Semi-transparent misty flagstone fade (▒ -> ░) directly over transparent terminal!
+                            float f_out = (gp_r - r_solid) / 1.25f;
+                            g_frame[y][x].shade = (f_out < 0.45f) ? 2 : 1;
+                            float lit_m = g_bonfire_lit ? 1.0f : 0.65f;
+                            g_frame[y][x].color = (RGB){
+                                (uint8_t)(48.0f * lit_m),
+                                (uint8_t)(58.0f * lit_m),
+                                (uint8_t)(64.0f * lit_m)
+                            };
                         }
                     }
                 }
@@ -3565,7 +4518,44 @@ static void render_scene(void) {
                 float r_core = sqrtf(ash_bed_pt.x * ash_bed_pt.x + ash_bed_pt.z * ash_bed_pt.z);
                 float core_heat = g_ash_bed.heat * fmaxf(0.0f, 1.0f - r_core / 4.2f);
 
-                if (g_is_dark_souls) {
+                if (g_is_bloodborne) {
+                    // Weathered dark Yharnam flagstones with natural tonal falloff (edge fades via Bayer transparency)
+                    float dx_c = ash_bed_pt.x - g_lamp.lantern_pos.x;
+                    float dz_c = ash_bed_pt.z - g_lamp.lantern_pos.z;
+                    float r_c = sqrtf(dx_c * dx_c + dz_c * dz_c);
+                    float vig = 0.55f + 0.45f * fmaxf(0.0f, 1.0f - r_c / 3.9f);
+
+                    // Diagonal weathered large flagstone slabs with subtle cracked joints
+                    float gx = ash_bed_pt.x * 0.84f + ash_bed_pt.z * 0.54f;
+                    float gz = -ash_bed_pt.x * 0.54f + ash_bed_pt.z * 0.84f;
+                    float u_slab = gx * 0.52f;
+                    float v_slab = gz * 0.46f;
+                    int row_slab = (int)floorf(v_slab);
+                    if (row_slab & 1) u_slab += 0.42f;
+                    float su = u_slab - floorf(u_slab);
+                    float sv = v_slab - floorf(v_slab);
+                    bool is_crack = (su < 0.048f || su > 0.952f || sv < 0.052f || sv > 0.948f);
+
+                    float tex = 0.82f + 0.18f * sinf(ash_bed_pt.x * 3.1f + ash_bed_pt.z * 2.7f)
+                                      * cosf(ash_bed_pt.x * 5.2f - ash_bed_pt.z * 4.1f);
+                    float illum = (g_bonfire_lit ? (0.58f + 0.55f * s_val) : 0.52f) * vig * tex;
+                    if (is_crack) illum *= 0.34f;
+
+                    // Subtle eerie pale misty greenish-slate pool directly beneath the Messengers
+                    float mist_pool = fmaxf(0.0f, 1.0f - r_c / 2.20f);
+                    mist_pool = mist_pool * mist_pool * (g_bonfire_lit ? 0.55f : 0.12f);
+
+                    float rf = (58.0f * illum) + (42.0f * mist_pool);
+                    float gf = (62.0f * illum) + (56.0f * mist_pool);
+                    float bf = (66.0f * illum) + (64.0f * mist_pool);
+
+                    g_shade_buf[y][x] = (RGB){
+                        (uint8_t)fminf(255.0f, rf),
+                        (uint8_t)fminf(255.0f, gf),
+                        (uint8_t)fminf(255.0f, bf)
+                    };
+                    goto ash_done;
+                } else if (g_is_dark_souls) {
                     if (ash_bed_pt.y > -4.18f) {
                         // On the sacred Ash Mound
                         if (r_core < 1.35f && ash_bed_pt.y > -3.35f && g_bonfire_lit) {
@@ -3823,6 +4813,107 @@ static void render_scene(void) {
                     if (b_idx > 4) b_idx = 4;
                     g_shade_buf[y][x] = PALETTE_BONE[b_idx];
                 }
+
+            } else if (hit_type == 9) {
+                g_id_buf[y][x] = OBJ_LAMP_BASE;
+                g_depth_buf[y][x] = vec3_dot(vec3_sub(lamp_pt, cam_pos), fwd);
+
+                if (lamp_part == 5) {
+                    // Blinding two-tone ghostly lantern core: warm cream top highlight + pure white core + cold ice-blue edge
+                    Vec3 v_dir = vec3_norm(vec3_sub(cam_pos, lamp_pt));
+                    float ndotv = fmaxf(0.0f, vec3_dot(lamp_norm, v_dir));
+                    if (lamp_pt.y > 2.10f && g_fire_state != FIRE_STATE_SMOLDERING_REST) {
+                        g_shade_buf[y][x] = (RGB){252, 245, 214}; // Warm pale ivory-gold reflection under hood
+                    } else {
+                        int f_idx = (ndotv > 0.48f) ? 4 : ((ndotv > 0.20f) ? 3 : 2);
+                        if (g_fire_state == FIRE_STATE_SMOLDERING_REST && f_idx > 2) f_idx--;
+                        g_shade_buf[y][x] = PALETTE_BB_FLAME[f_idx];
+                    }
+                } else if (lamp_part == 6) {
+                    // Deep dark hollow mouth interior inside the antique brass bells
+                    g_shade_buf[y][x] = (RGB){26, 22, 16};
+                } else {
+                    Vec3 l_vec = vec3_sub(light_pos, lamp_pt);
+                    float l_dist = vec3_len(l_vec);
+                    Vec3 l_dir = vec3_norm(l_vec);
+                    float atten = 1.0f / (1.0f + 0.14f * l_dist + 0.04f * l_dist * l_dist);
+                    float ndotl = fmaxf(0.0f, vec3_dot(lamp_norm, l_dir));
+
+                    // Pale gothic Yharnam moonlight rim from upper-left-front
+                    Vec3 moon_dir = vec3_norm((Vec3){0.40f, 0.72f, -0.56f});
+                    float moon_diff = fmaxf(0.0f, vec3_dot(lamp_norm, moon_dir));
+
+                    Vec3 v_dir = vec3_norm(vec3_sub(cam_pos, lamp_pt));
+                    Vec3 h_dir = vec3_norm(vec3_add(l_dir, v_dir));
+                    float spec = powf(fmaxf(0.0f, vec3_dot(lamp_norm, h_dir)), 10.0f) * 1.4f * atten;
+
+                    float front_amb = g_bonfire_lit ? (0.30f + 0.16f * fmaxf(0.0f, lamp_norm.y))
+                                                    : (0.52f + 0.28f * fmaxf(0.0f, lamp_norm.y));
+                    float moon_scale = g_bonfire_lit ? 0.55f : 1.05f;
+                    float light_val = ndotl * atten * light_intensity * 2.6f + moon_diff * moon_scale + front_amb + spec;
+
+                    if (lamp_part == 4) {
+                        // Cluster of 3 antique tarnished brass bells gleaming at the top tip of the diagonal arm
+                        float bell_lit = 1.6f + moon_diff * 1.4f + ndotl * atten * light_intensity * 1.5f + spec * 1.6f;
+                        int b_idx = (int)(bell_lit);
+                        if (b_idx < 2) b_idx = 2;
+                        if (b_idx > 4) b_idx = 4;
+                        g_shade_buf[y][x] = PALETTE_BB_BRASS[b_idx];
+                    } else if (lamp_part == 1) {
+                        // Interior pale wax candle stub (visible cold wax when unlit!)
+                        g_shade_buf[y][x] = g_bonfire_lit ? (RGB){215, 222, 245} : (RGB){165, 160, 152};
+                    } else {
+                        // Dark weathered wood/iron pole, chains, cage ribs & ornate gothic cap
+                        // Keep the crooked pole dark & moody, catching cool moonlight when unlit & steel rim gleam when lit
+                        float pole_dim = (lamp_part == 0 && lamp_pt.x < -0.80f) ? (g_bonfire_lit ? 0.60f : 0.78f) : 0.88f;
+                        int c_idx = (int)(light_val * 1.45f * pole_dim);
+                        if (lamp_part == 2 && l_dist < 1.35f && g_bonfire_lit) c_idx++;
+                        if (!g_bonfire_lit && c_idx < 1) c_idx = 1; // Ensure crisp unlit iron silhouette on dark/transparent terminals
+                        if (spec > 0.55f && g_bonfire_lit && l_dist < 2.2f) c_idx = 4;
+                        if (c_idx < 0) c_idx = 0;
+                        if (c_idx > 4) c_idx = 4;
+                        g_shade_buf[y][x] = PALETTE_GOTHIC_IRON[c_idx];
+                    }
+                }
+
+            } else if (hit_type == 10) {
+                g_id_buf[y][x] = msgr_id;
+                g_depth_buf[y][x] = vec3_dot(vec3_sub(msgr_pt, cam_pos), fwd);
+
+                if (msgr_feat >= 0.85f) {
+                    // Deep hollow black eye socket / nasal cavity / open mouth void
+                    g_shade_buf[y][x] = PALETTE_MESSENGER[0];
+                } else {
+                    Vec3 l_vec = vec3_sub(light_pos, msgr_pt);
+                    float l_dist = vec3_len(l_vec);
+                    Vec3 l_dir = vec3_norm(l_vec);
+                    float atten = 1.0f / (1.0f + 0.06f * l_dist + 0.010f * l_dist * l_dist);
+
+                    // Half-Lambert wrap lighting so pale bone faces, necks, ribs & arms read clearly!
+                    float wrap_ndotl = fmaxf(0.0f, (vec3_dot(msgr_norm, l_dir) + 0.65f) / 1.65f);
+                    Vec3 v_dir = vec3_norm(vec3_sub(cam_pos, msgr_pt));
+                    float ndotv = fmaxf(0.0f, vec3_dot(msgr_norm, v_dir));
+
+                    float top_lit = fmaxf(0.0f, msgr_norm.y) * 0.45f;
+                    float lit_scale = g_bonfire_lit ? (0.85f + 0.40f * light_intensity * atten) : 0.62f;
+                    float light_val = (wrap_ndotl * 0.85f + ndotv * 0.48f + top_lit) * lit_scale;
+
+                    // Soft smooth fade only at the very bottom base into dark ground mist
+                    float mist_fade = fmaxf(0.0f, fminf(1.0f, (msgr_pt.y + 4.28f) / 0.65f));
+                    light_val *= (0.45f + 0.55f * mist_fade);
+
+                    int m_idx;
+                    if (msgr_feat > 0.50f) {
+                        // Crisp dark intercostal ribcage shadow stripes on skeletal torso
+                        m_idx = (light_val > 1.05f) ? 2 : 1;
+                    } else {
+                        m_idx = 1 + (int)(light_val * 2.15f);
+                        if (msgr_feat > 0.20f && m_idx > 2) m_idx--; // Spindly neck/arm tonal depth
+                        if (m_idx < 1) m_idx = 1; // Reserve index 0 strictly for hollow eyes & mouth!
+                        if (m_idx > 4) m_idx = 4;
+                    }
+                    g_shade_buf[y][x] = PALETTE_MESSENGER[m_idx];
+                }
             }
         }
     }
@@ -3862,12 +4953,14 @@ static void render_scene(void) {
             }
 
             if (is_edge) {
-                if (curr_id >= OBJ_BONE_BASE) {
+                if (curr_id == OBJ_LAMP_BASE || curr_id >= OBJ_MSGR_BASE) {
+                    g_frame[y][x].color = g_shade_buf[y][x];
+                } else if (curr_id >= OBJ_BONE_BASE) {
                     g_frame[y][x].color = g_shade_buf[y][x]; // Keep rich bone shading and eye socket voids intact
                 } else if (curr_id >= OBJ_LEAF_BASE) {
                     g_frame[y][x].color = g_shade_buf[y][x];
                 } else if (curr_id == OBJ_ASH_BED) {
-                    g_frame[y][x].color = g_is_dark_souls ? g_shade_buf[y][x] : PALETTE_DIRT[0];
+                    g_frame[y][x].color = (g_is_dark_souls || g_is_bloodborne) ? g_shade_buf[y][x] : PALETTE_DIRT[0];
                 } else if (curr_id == OBJ_SWORD) {
                     g_frame[y][x].color = PALETTE_IRON[0];
                 } else {
@@ -3886,15 +4979,35 @@ static void render_scene(void) {
         for (int x = 0; x < g_pixel_w; x++) {
             float heat = g_fire_heat[y][x];
             if (heat > 0.05f) {
+                const RGB *fpal = g_is_bloodborne ? PALETTE_BB_FLAME : PALETTE_EMBERS;
                 RGB fire_col;
-                if (heat > 0.85f) fire_col = PALETTE_EMBERS[4];
-                else if (heat > 0.65f) fire_col = PALETTE_EMBERS[3];
-                else if (heat > 0.40f) fire_col = PALETTE_EMBERS[2];
-                else if (heat > 0.18f) fire_col = PALETTE_EMBERS[1];
-                else fire_col = PALETTE_EMBERS[0];
+                if (heat > 0.85f) fire_col = fpal[4];
+                else if (heat > 0.65f) fire_col = fpal[3];
+                else if (heat > 0.40f) fire_col = fpal[2];
+                else if (heat > 0.18f) fire_col = fpal[1];
+                else fire_col = fpal[0];
 
                 if (g_id_buf[y][x] > 0) {
-                    if (g_is_dark_souls) {
+                    if (g_is_bloodborne) {
+                        if (g_id_buf[y][x] == OBJ_LAMP_BASE) {
+                            if (g_fire_z[y][x] < g_depth_buf[y][x] - 0.12f) {
+                                g_frame[y][x].color = fire_col;
+                            } else {
+                                // Keep front iron bars dark & crisp with subtle translucent ethereal edge glow
+                                RGB base_c = g_frame[y][x].color;
+                                float fire_alpha = heat * 0.22f;
+                                g_frame[y][x].color = (RGB){
+                                    (uint8_t)fminf(255.0f, base_c.r * (1.0f - fire_alpha) + fire_col.r * fire_alpha),
+                                    (uint8_t)fminf(255.0f, base_c.g * (1.0f - fire_alpha) + fire_col.g * fire_alpha),
+                                    (uint8_t)fminf(255.0f, base_c.b * (1.0f - fire_alpha) + fire_col.b * fire_alpha)
+                                };
+                            }
+                            g_frame[y][x].is_sky = false;
+                        } else if (g_fire_z[y][x] < g_depth_buf[y][x] - 0.06f) {
+                            g_frame[y][x].color = fire_col;
+                            g_frame[y][x].is_sky = false;
+                        }
+                    } else if (g_is_dark_souls) {
                         if (g_id_buf[y][x] == OBJ_ASH_BED) {
                             g_frame[y][x].color = fire_col;
                             g_frame[y][x].is_sky = false;
@@ -3934,6 +5047,66 @@ static void render_scene(void) {
                 } else {
                     g_frame[y][x].color = fire_col;
                     g_frame[y][x].is_sky = false;
+                }
+            }
+        }
+    }
+
+    // 3b. Bloodborne Volumetric Ghostly Lantern Halo (Animated Semi-Transparent ░ ▒ ▓ Squares over Transparent BG!)
+    if (g_is_bloodborne && g_bonfire_lit) {
+        Vec3 rel_l = vec3_sub(g_lamp.flame_pos, cam_pos);
+        float lz_s = vec3_dot(rel_l, fwd);
+        if (lz_s > 0.5f) {
+            float lx_f = ((vec3_dot(rel_l, right) / world_w) + 0.5f) * (float)g_pixel_w;
+            float ly_f = (0.5f - (vec3_dot(rel_l, up) / world_h)) * (float)g_pixel_h;
+            float pulse = 0.90f + 0.10f * sinf(g_anim_time * 3.4f) + 0.05f * cosf(g_anim_time * 7.8f);
+            float rad_x = (float)g_pixel_h * 0.34f * (0.96f + 0.05f * sinf(g_anim_time * 3.4f));
+            float rad_y = (float)g_pixel_h * 0.22f * (0.96f + 0.05f * cosf(g_anim_time * 2.9f));
+            float bloom_strength = (g_fire_state == FIRE_STATE_SMOLDERING_REST ? 0.38f : 0.88f) * pulse;
+
+            int y0 = (int)fmaxf(0.0f, ly_f - rad_y);
+            int y1 = (int)fminf((float)(g_pixel_h - 1), ly_f + rad_y);
+            int x0 = (int)fmaxf(0.0f, lx_f - rad_x);
+            int x1 = (int)fminf((float)(g_pixel_w - 1), lx_f + rad_x);
+
+            for (int y = y0; y <= y1; y++) {
+                float dy = ((float)y - ly_f) / rad_y;
+                for (int x = x0; x <= x1; x++) {
+                    float dx = ((float)x - lx_f) / rad_x;
+                    float d2 = dx * dx + dy * dy;
+                    if (d2 >= 1.0f) continue;
+
+                    float d = sqrtf(d2);
+                    // Subtle organic shimmer ripple along the semi-transparent halo boundary
+                    float shimmer = 0.045f * sinf(d * 9.0f - g_anim_time * 4.2f + atan2f(dy, dx) * 3.0f);
+                    float glow = expf(-d2 * 3.6f) * (1.0f - d) * bloom_strength + shimmer * (1.0f - d);
+                    if (glow < 0.040f) continue;
+
+                    if (g_frame[y][x].is_sky) {
+                        // Semi-transparent Unicode shade squares (▓ 75%, ▒ 50%, ░ 25%) on transparent \033[49m background!
+                        uint8_t sh = (glow > 0.36f) ? 3 : ((glow > 0.14f) ? 2 : 1);
+                        if (sh >= g_frame[y][x].shade) {
+                            float t_col = fminf(1.0f, glow * 1.45f);
+                            g_frame[y][x].shade = sh;
+                            g_frame[y][x].color = (RGB){
+                                (uint8_t)fminf(255.0f, 66.0f  + 172.0f * t_col),
+                                (uint8_t)fminf(255.0f, 84.0f  + 162.0f * t_col),
+                                (uint8_t)fminf(255.0f, 152.0f + 103.0f * t_col)
+                            };
+                        }
+                    } else {
+                        // On existing 3D geometry (cage, roof, bell, chains): add smooth ghostly rim bloom
+                        float g_adj = glow;
+                        if (g_id_buf[y][x] == OBJ_LAMP_BASE && g_depth_buf[y][x] < lz_s - 0.22f) {
+                            g_adj *= 0.24f;
+                        }
+                        float inner = (d < 0.30f) ? (1.0f - d / 0.30f) * 0.55f * bloom_strength : 0.0f;
+                        RGB c = g_frame[y][x].color;
+                        c.r = (uint8_t)fminf(255.0f, (float)c.r + 108.0f * g_adj + 150.0f * inner);
+                        c.g = (uint8_t)fminf(255.0f, (float)c.g + 124.0f * g_adj + 165.0f * inner);
+                        c.b = (uint8_t)fminf(255.0f, (float)c.b + 190.0f * g_adj + 205.0f * inner);
+                        g_frame[y][x].color = c;
+                    }
                 }
             }
         }
@@ -4093,6 +5266,267 @@ static void render_modal_row(char *buf, int buf_cap, int *buf_len, int row, int 
     if (n > 0) *buf_len += n;
 }
 
+// ============================================================================
+// Cinematic Dark Souls / Bloodborne Trajan-style Half-Block ANSI Banners
+// ============================================================================
+
+typedef struct {
+    char ch;
+    uint8_t w;
+    const char *rows[8];
+} BannerGlyph;
+
+static const BannerGlyph BANNER_TRAJAN_FONT[] = {
+    {'A', 6, { "..##..", ".####.", ".#..#.", ".#..#.", "######", "#....#", "#....#", "##..##" }},
+    {'B', 5, { "####.", ".#..#", ".#..#", "####.", ".#..#", ".#..#", ".#..#", "####." }},
+    {'D', 6, { "#####.", ".#...#", ".#...#", ".#...#", ".#...#", ".#...#", ".#...#", "#####." }},
+    {'E', 5, { "#####", ".#..#", ".#...", "####.", ".#...", ".#...", ".#..#", "#####" }},
+    {'F', 5, { "#####", ".#..#", ".#...", "####.", ".#...", ".#...", ".#...", "###.." }},
+    {'G', 6, { ".####.", "##..##", "#.....", "#..###", "#....#", "#....#", "##..##", ".####." }},
+    {'H', 6, { "##..##", ".#..#.", ".#..#.", "######", ".#..#.", ".#..#.", ".#..#.", "##..##" }},
+    {'I', 3, { "###",   ".#.",   ".#.",   ".#.",   ".#.",   ".#.",   ".#.",   "###"   }},
+    {'L', 5, { "###..", ".#...", ".#...", ".#...", ".#...", ".#...", ".#..#", "#####" }},
+    {'N', 6, { "##..##", "###.#.", ".##.#.", ".#.##.", ".#.##.", ".#..#.", ".#..#.", "##..##" }},
+    {'O', 6, { ".####.", "##..##", "#....#", "#....#", "#....#", "#....#", "##..##", ".####." }},
+    {'P', 5, { "####.", ".#..#", ".#..#", ".#..#", "####.", ".#...", ".#...", "###.." }},
+    {'R', 6, { "####..", ".#..#.", ".#..#.", ".####.", ".#.#..", ".#..#.", ".#..#.", "###.##" }},
+    {'S', 5, { ".####", "#...#", "#....", ".###.", "....#", "....#", "#...#", "####." }},
+    {'T', 5, { "#####", "#.#.#", "..#..", "..#..", "..#..", "..#..", "..#..", ".###." }},
+    {'U', 6, { "##..##", ".#..#.", ".#..#.", ".#..#.", ".#..#.", ".#..#.", ".##.##", "..##.." }},
+    {'Y', 5, { "##.##", ".#.#.", ".#.#.", "..#..", "..#..", "..#..", "..#..", ".###." }},
+    {' ', 4, { "....",  "....",  "....",  "....",  "....",  "....",  "....",  "...."  }}
+};
+
+static const BannerGlyph *banner_find_glyph(char ch) {
+    size_t n = sizeof(BANNER_TRAJAN_FONT) / sizeof(BANNER_TRAJAN_FONT[0]);
+    for (size_t i = 0; i < n; i++) {
+        if (BANNER_TRAJAN_FONT[i].ch == ch) return &BANNER_TRAJAN_FONT[i];
+    }
+    return &BANNER_TRAJAN_FONT[n - 1];
+}
+
+typedef struct {
+    RGB bg;
+    RGB bloom;
+    RGB hi;
+    RGB mid;
+    RGB lo;
+    RGB rule;
+} BannerTheme;
+
+static void composite_souls_banner_into_frame(int text_rows, int cols) {
+    static float s_banner_start = 0.0f, s_banner_last = 0.0f;
+    if (g_banner_timer > s_banner_last + 0.001f) s_banner_start = g_banner_timer;
+    s_banner_last = g_banner_timer;
+
+    if (g_banner_timer <= 0.0f || cols < 24 || text_rows < 8) return;
+
+    float elapsed = s_banner_start - g_banner_timer;
+    float a_in  = fminf(fmaxf(elapsed / 1.0f, 0.0f), 1.0f);
+    float a_out = fminf(fmaxf(g_banner_timer / 0.85f, 0.0f), 1.0f);
+    a_in  = a_in * a_in * (3.0f - 2.0f * a_in);
+    a_out = a_out * a_out * (3.0f - 2.0f * a_out);
+    float alpha = (a_in < a_out) ? a_in : a_out;
+    if (alpha < 0.03f) return;
+    float progress = fminf(fmaxf(elapsed / fmaxf(0.1f, s_banner_start), 0.0f), 1.0f);
+
+    static const BannerTheme th_bb_lit = {
+        {10, 8, 16}, {38, 30, 62},
+        {248, 244, 255}, {192, 174, 238}, {118, 98, 172}, {170, 146, 224}
+    };
+    static const BannerTheme th_bb_prey = {
+        {16, 4, 6}, {64, 12, 16},
+        {255, 208, 208}, {228, 42, 52}, {132, 16, 24}, {205, 42, 48}
+    };
+    static const BannerTheme th_ds_lit = {
+        {10, 6, 5}, {58, 24, 9},
+        {255, 246, 196}, {246, 190, 64}, {178, 98, 22}, {212, 148, 52}
+    };
+    static const BannerTheme th_ds_rest = {
+        {10, 6, 5}, {48, 20, 8},
+        {255, 232, 168}, {226, 160, 54}, {152, 82, 22}, {190, 132, 48}
+    };
+
+    const char *text = NULL;
+    const BannerTheme *th = NULL;
+    if (g_is_bloodborne) {
+        if (g_banner_type == BANNER_LIT) {
+            text = "LANTERN LIT"; th = &th_bb_lit;
+        } else if (g_banner_type == BANNER_REST || g_banner_type == BANNER_LONG_REST) {
+            text = "PREY SLAUGHTERED"; th = &th_bb_prey;
+        }
+    } else if (g_banner_type == BANNER_LIT) {
+        text = "BONFIRE LIT"; th = &th_ds_lit;
+    } else if (g_banner_type == BANNER_REST || g_banner_type == BANNER_LONG_REST) {
+        text = (g_banner_type == BANNER_LONG_REST) ? "LONG REST" : "REST AT FIRE";
+        th = &th_ds_rest;
+    }
+    if (!text || !th) return;
+
+    int tlen = (int)strlen(text);
+    int track = 2;
+    int art_w = 0;
+    for (int i = 0; i < tlen; i++) {
+        art_w += banner_find_glyph(text[i])->w;
+        if (i + 1 < tlen) art_w += track;
+    }
+    if (art_w + 18 > cols && track > 1) {
+        track = 1;
+        art_w = 0;
+        for (int i = 0; i < tlen; i++) {
+            art_w += banner_find_glyph(text[i])->w;
+            if (i + 1 < tlen) art_w += track;
+        }
+    }
+    if (art_w + 6 > cols || art_w > 184) return;
+
+    static uint8_t mask[8][200];
+    int pad_x = 5;
+    int inner_w = art_w + pad_x * 2;
+    if (inner_w > 196) inner_w = 196;
+    memset(mask, 0, sizeof(mask));
+
+    int cx = pad_x;
+    for (int i = 0; i < tlen; i++) {
+        const BannerGlyph *g = banner_find_glyph(text[i]);
+        for (int gy = 0; gy < 8; gy++) {
+            for (int gx = 0; gx < g->w; gx++) {
+                if (g->rows[gy][gx] == '#' && cx + gx < inner_w) {
+                    mask[gy][cx + gx] = 1;
+                }
+            }
+        }
+        cx += g->w + track;
+    }
+
+    int fade_w = 8;
+    int total_w = inner_w + fade_w * 2;
+    if (total_w > cols) {
+        fade_w = (cols - inner_w) / 2;
+        if (fade_w < 0) fade_w = 0;
+        total_w = inner_w + fade_w * 2;
+    }
+    int start_x = (cols - total_w) / 2;
+    int banner_row = (text_rows / 2) - 3;
+    if (banner_row < 2) banner_row = 2;
+    if (banner_row + 6 > text_rows) banner_row = text_rows - 6;
+    if (banner_row < 0) return;
+
+    // 12 subpixels tall (6 terminal rows):
+    // sy=0: top dark margin, sy=1: crisp 1px gradient rule (no diamond!), sy=2..9: 8px Trajan glyphs, sy=10: bottom 1px rule, sy=11: bottom margin
+    int y_base = banner_row * 2;
+    float sweep_x = -12.0f + progress * (float)(inner_w + 24);
+
+    for (int sy = 0; sy < 12; sy++) {
+        int py = y_base + sy;
+        if (py < 0 || py >= g_pixel_h) continue;
+        // Soft vertical feather on outer margin subpixels (sy=0 and sy=11)
+        float wy = (sy == 0 || sy == 11) ? 0.65f : 1.0f;
+
+        for (int bx = 0; bx < total_w; bx++) {
+            int px = start_x + bx;
+            if (px < 0 || px >= cols) continue;
+
+            float wx = 1.0f;
+            if (fade_w > 0 && bx < fade_w) {
+                float t = (float)(bx + 1) / (float)(fade_w + 1);
+                wx = t * t * (3.0f - 2.0f * t);
+            } else if (fade_w > 0 && bx >= total_w - fade_w) {
+                float t = (float)(total_w - bx) / (float)(fade_w + 1);
+                wx = t * t * (3.0f - 2.0f * t);
+            }
+
+            float band_op = alpha * wx * wy;
+            if (band_op < 0.04f) continue;
+
+            int ix = bx - fade_w;
+            bool is_fg = false;
+            RGB src = th->bg;
+            float fg_op = band_op;
+
+            if (ix >= 0 && ix < inner_w) {
+                if (sy == 1 || sy == 10) {
+                    // Clean continuous 1px ornamental horizontal rule (no center diamond)
+                    float u = (float)ix / fmaxf(1.0f, (float)(inner_w - 1));
+                    float arch = sinf(u * (float)M_PI);
+                    float rule_t = arch * arch;
+                    if (rule_t > 0.06f) {
+                        is_fg = true;
+                        src.r = (uint8_t)(th->bg.r + (th->rule.r - th->bg.r) * rule_t);
+                        src.g = (uint8_t)(th->bg.g + (th->rule.g - th->bg.g) * rule_t);
+                        src.b = (uint8_t)(th->bg.b + (th->rule.b - th->bg.b) * rule_t);
+                        fg_op = alpha * wx;
+                    }
+                } else if (sy >= 2 && sy <= 9) {
+                    int gy = sy - 2;
+                    if (mask[gy][ix]) {
+                        is_fg = true;
+                        float v = (float)gy / 7.0f;
+                        float cr, cg, cb;
+                        if (v < 0.45f) {
+                            float t = v / 0.45f;
+                            cr = th->hi.r + (th->mid.r - th->hi.r) * t;
+                            cg = th->hi.g + (th->mid.g - th->hi.g) * t;
+                            cb = th->hi.b + (th->mid.b - th->hi.b) * t;
+                        } else {
+                            float t = (v - 0.45f) / 0.55f;
+                            cr = th->mid.r + (th->lo.r - th->mid.r) * t;
+                            cg = th->mid.g + (th->lo.g - th->mid.g) * t;
+                            cb = th->mid.b + (th->lo.b - th->mid.b) * t;
+                        }
+                        float dsw = fabsf(((float)ix + (float)gy * 0.6f) - sweep_x);
+                        if (dsw < 4.0f) {
+                            float g = (1.0f - dsw / 4.0f) * 0.42f;
+                            cr += (255.0f - cr) * g;
+                            cg += (255.0f - cg) * g;
+                            cb += (255.0f - cb) * g;
+                        }
+                        src.r = (uint8_t)cr; src.g = (uint8_t)cg; src.b = (uint8_t)cb;
+                        fg_op = alpha;
+                    } else {
+                        bool near = (ix > 0 && mask[gy][ix - 1]) || (ix + 1 < inner_w && mask[gy][ix + 1]) ||
+                                    (gy > 0 && mask[gy - 1][ix]) || (gy < 7 && mask[gy + 1][ix]);
+                        if (near) {
+                            src = th->bloom;
+                        }
+                    }
+                }
+            }
+
+            Pixel *dst = &g_frame[py][px];
+            if (!dst->is_sky) {
+                // True RGB alpha-blend directly over 3D flames/sword/stones (zero overdraw, translucent band!)
+                float op = is_fg ? fg_op : (band_op * 0.88f);
+                dst->color.r = (uint8_t)(dst->color.r + ((float)src.r - (float)dst->color.r) * op);
+                dst->color.g = (uint8_t)(dst->color.g + ((float)src.g - (float)dst->color.g) * op);
+                dst->color.b = (uint8_t)(dst->color.b + ((float)src.b - (float)dst->color.b) * op);
+                dst->shade = 0;
+            } else if (is_fg) {
+                if (fg_op >= 0.14f) {
+                    dst->is_sky = false;
+                    dst->shade = 0;
+                    dst->color.r = (uint8_t)(th->bg.r + ((float)src.r - (float)th->bg.r) * fg_op);
+                    dst->color.g = (uint8_t)(th->bg.g + ((float)src.g - (float)th->bg.g) * fg_op);
+                    dst->color.b = (uint8_t)(th->bg.b + ((float)src.b - (float)th->bg.b) * fg_op);
+                }
+            } else {
+                // Dark cinematic band over transparent sky: solid at full hold, dissolves via ▓▒░ during fade/edges
+                if (band_op >= 0.82f) {
+                    dst->is_sky = false;
+                    dst->shade = 0;
+                    dst->color = src;
+                } else if (band_op >= 0.18f) {
+                    uint8_t sh = (band_op >= 0.58f) ? 3 : ((band_op >= 0.36f) ? 2 : 1);
+                    if (sh > dst->shade) {
+                        dst->shade = sh;
+                        dst->color = th->bg;
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void render_confirmation_modal(char *buf, int buf_cap, int *buf_len, int text_rows, int pixel_w) {
     if (g_modal_active == MODAL_NONE) return;
 
@@ -4172,6 +5606,8 @@ static int format_frame_buffer(char *buf, int buf_cap) {
     bool prev_bg_transp = true;
 
     int text_rows = g_pixel_h / 2;
+    // Composite Souls/Bloodborne banner directly into g_frame before ANSI emission (zero overdraw, zero flicker!)
+    composite_souls_banner_into_frame(text_rows, g_pixel_w);
     for (int r = 0; r < text_rows; r++) {
         int y_top = r * 2;
         int y_bot = r * 2 + 1;
@@ -4182,6 +5618,26 @@ static int format_frame_buffer(char *buf, int buf_cap) {
             Pixel bot = g_frame[y_bot][x];
 
             if (top.is_sky && bot.is_sky) {
+                uint8_t s = (top.shade > bot.shade) ? top.shade : bot.shade;
+                if (s > 0) {
+                    RGB sc = (top.shade >= bot.shade) ? top.color : bot.color;
+                    if (sc.r != prev_fg_r || sc.g != prev_fg_g || sc.b != prev_fg_b) {
+                        n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[38;2;%d;%d;%dm",
+                                     sc.r, sc.g, sc.b);
+                        if (n > 0) buf_len += n;
+                        prev_fg_r = sc.r; prev_fg_g = sc.g; prev_fg_b = sc.b;
+                    }
+                    if (!prev_bg_transp) {
+                        n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
+                        if (n > 0) buf_len += n;
+                        prev_bg_transp = true;
+                        prev_bg_r = prev_bg_g = prev_bg_b = -1;
+                    }
+                    const char *glyph = (s >= 3) ? "▓" : ((s == 2) ? "▒" : "░");
+                    n = snprintf(buf + buf_len, buf_cap - buf_len, "%s", glyph);
+                    if (n > 0) buf_len += n;
+                    continue;
+                }
                 if (!prev_bg_transp) {
                     n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[49m");
                     if (n > 0) buf_len += n;
@@ -4260,7 +5716,57 @@ static int format_frame_buffer(char *buf, int buf_cap) {
         char hud_buf[256];
         int hud_len = 0;
 
-        if (g_fire_state == FIRE_STATE_UNLIT) {
+        if (g_is_bloodborne) {
+            if (g_fire_state == FIRE_STATE_UNLIT) {
+                hud_len = snprintf(hud_buf, sizeof(hud_buf),
+                    "\033[1;38;2;165;175;200m[ HUNTER'S LAMP UNLIT ]\033[0m  \033[1;38;2;170;150;210mHunt: %02d:00\033[0m  |  \033[1;37m[E]\033[0m \033[38;2;190;170;240mLight Lamp\033[0m",
+                    (int)(g_focus_duration / 60.0f));
+            } else if (g_fire_state == FIRE_STATE_LIT_FOCUS) {
+                float el_foc = fminf(g_focus_duration, g_pomodoro_elapsed);
+                float rem_foc = fmaxf(0.0f, g_focus_duration - el_foc);
+                int e_m = (int)(el_foc / 60.0f), e_s = (int)fmodf(el_foc, 60.0f);
+                int t_m = (int)(g_focus_duration / 60.0f), t_s = (int)fmodf(g_focus_duration, 60.0f);
+                int r_m = (int)(rem_foc / 60.0f), r_s = (int)fmodf(rem_foc, 60.0f);
+
+                float pct = (g_focus_duration > 0.0f) ? (el_foc / g_focus_duration) : 0.0f;
+                int bar_w = 16;
+                int filled = (int)(pct * bar_w);
+                if (filled > bar_w) filled = bar_w;
+
+                char bar[64];
+                int bpos = 0;
+                for (int b = 0; b < filled; b++) bpos += snprintf(bar + bpos, sizeof(bar) - bpos, "█");
+                for (int b = filled; b < bar_w; b++) bpos += snprintf(bar + bpos, sizeof(bar) - bpos, "░");
+
+                int curr_session = (g_sessions_before_long_break > 0) ? ((g_pomodoro_cycles_done % g_sessions_before_long_break) + 1) : 1;
+                hud_len = snprintf(hud_buf, sizeof(hud_buf),
+                    "\033[1;38;2;180;150;235mHUNT [%02d/%02d]\033[0m  \033[1;35m🕯\033[0m \033[1;37m%02d:%02d / %02d:%02d\033[0m  \033[38;2;180;140;230m[%s]\033[0m \033[1;35m%2d%%\033[0m  \033[38;2;180;180;180m(Left %02d:%02d)\033[0m%s",
+                    curr_session, g_sessions_before_long_break, e_m, e_s, t_m, t_s, bar, (int)(pct * 100.0f), r_m, r_s,
+                    g_pomodoro_paused ? "  \033[1;33m[PAUSED]\033[0m" : "");
+            } else if (g_fire_state == FIRE_STATE_SMOLDERING_REST) {
+                float el_rst = fminf(g_rest_duration, g_pomodoro_elapsed);
+                float rem_rst = fmaxf(0.0f, g_rest_duration - el_rst);
+                int r_m = (int)(rem_rst / 60.0f), r_s = (int)fmodf(rem_rst, 60.0f);
+                float pct = (g_rest_duration > 0.0f) ? (1.0f - el_rst / g_rest_duration) : 0.0f;
+                int bar_w = 14;
+                int filled = (int)(pct * bar_w);
+                if (filled > bar_w) filled = bar_w;
+
+                char bar[64];
+                int bpos = 0;
+                for (int b = 0; b < filled; b++) bpos += snprintf(bar + bpos, sizeof(bar) - bpos, "█");
+                for (int b = filled; b < bar_w; b++) bpos += snprintf(bar + bpos, sizeof(bar) - bpos, "░");
+
+                const char *rest_title = g_is_long_break ? "\033[1;38;2;140;180;255mHUNTER'S DREAM\033[0m" : "\033[1;38;2;220;60;50mPREY SLAUGHTERED\033[0m";
+                hud_len = snprintf(hud_buf, sizeof(hud_buf),
+                    "%s  \033[1;33m⏳ %02d:%02d\033[0m  \033[38;2;170;120;200m[%s]\033[0m  \033[1;37m[E]\033[0m \033[1;38;2;190;170;240mAwaken to Continue Hunt\033[0m%s",
+                    rest_title, r_m, r_s, bar,
+                    g_pomodoro_paused ? "  \033[1;33m[PAUSED]\033[0m" : "");
+            } else {
+                hud_len = snprintf(hud_buf, sizeof(hud_buf),
+                    "\033[1;30m[ LAMP EXTINGUISHED / DREAM FADED ]\033[0m  \033[1;37m[E]\033[0m \033[38;2;190;170;240mLight Lamp\033[0m");
+            }
+        } else if (g_fire_state == FIRE_STATE_UNLIT) {
             hud_len = snprintf(hud_buf, sizeof(hud_buf),
                 "\033[1;30m[ BONFIRE UNLIT ]\033[0m  \033[1;38;2;220;180;90mFocus: %02d:00\033[0m  |  \033[1;37m[E]\033[0m \033[38;2;255;215;100mKindle Bonfire\033[0m",
                 (int)(g_focus_duration / 60.0f));
@@ -4318,9 +5824,11 @@ static int format_frame_buffer(char *buf, int buf_cap) {
     }
 
     // -------------------------------------------------------------------------
-    // BOTTOM SHORTCUTS FOOTER LINE (Clean & minimal, no redundant status)
+    // BOTTOM SHORTCUTS FOOTER LINE (Dedicated row below 3D canvas, responsive width)
     // -------------------------------------------------------------------------
-    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[%d;1H\033[2K", text_rows);
+    int footer_row = text_rows + 1;
+    if (footer_row > g_term_rows) footer_row = g_term_rows;
+    n = snprintf(buf + buf_len, buf_cap - buf_len, "\033[%d;1H\033[2K", footer_row);
     if (n > 0) buf_len += n;
 
     char footer_buf[256];
@@ -4328,39 +5836,55 @@ static int format_frame_buffer(char *buf, int buf_cap) {
     int snd_vol = (!g_sound_enabled) ? 0 : g_sound_volume;
     const char *bgm_name = (g_music_track == MUSIC_TRACK_GWYN) ? "Gwyn" :
                            (g_music_track == MUSIC_TRACK_FIRELINK) ? "Firelink" : "Off";
+    bool compact_footer = (g_term_cols < 96);
 
     if (g_modal_active != MODAL_NONE) {
         snprintf(footer_buf, sizeof(footer_buf),
-            "\033[1;38;2;255;215;100m[Y / Enter]\033[0m \033[38;2;240;220;200mConfirm\033[0m   "
+            "\033[1;38;2;255;215;100m[Y / Enter]\033[0m \033[38;2;240;220;200mConfirm\033[0m  "
             "\033[1;38;2;200;160;100m[N / Esc]\033[0m \033[38;2;240;220;200mCancel\033[0m");
     } else if (g_fire_state == FIRE_STATE_UNLIT) {
         snprintf(footer_buf, sizeof(footer_buf),
-            "\033[1;37m[E]\033[0m \033[38;2;255;200;90mKindle\033[0m   "
-            "\033[38;2;160;160;160m[Space] 360°   [B] ♫ %s   [M] %s   [-/+] %d%%   [Q] Quit\033[0m",
+            compact_footer
+            ? "\033[1;37m[E]\033[0m \033[38;2;255;200;90m%s\033[0m  \033[38;2;160;160;160m[B] %s  [M] %s %d%%  [Q] Quit\033[0m"
+            : "\033[1;37m[E]\033[0m \033[38;2;255;200;90m%s\033[0m  \033[38;2;160;160;160m[Space] 360°  [B] ♫ %s  [M] %s  [-/+] %d%%  [Q] Quit\033[0m",
+            g_is_bloodborne ? "Light Lamp" : "Kindle",
             bgm_name, snd_mode, snd_vol);
     } else if (g_fire_state == FIRE_STATE_SMOLDERING_REST) {
-        snprintf(footer_buf, sizeof(footer_buf),
-            "\033[1;37m[E]\033[0m \033[38;2;255;200;90mRekindle\033[0m   "
-            "\033[38;2;160;160;160m[Space] 360°   [P] %s   [B] ♫ %s   [M] %s   [-/+] %d%%   [S] Skip   [Q] Quit\033[0m",
-            g_pomodoro_paused ? "Resume" : "Pause",
-            bgm_name, snd_mode, snd_vol);
+        if (compact_footer) {
+            snprintf(footer_buf, sizeof(footer_buf),
+                "\033[1;37m[E]\033[0m \033[38;2;255;200;90m%s\033[0m  \033[38;2;160;160;160m[P] %s  [B] %s  [M] %d%%  [S] Skip  [Q] Quit\033[0m",
+                g_is_bloodborne ? "Awaken" : "Rekindle",
+                g_pomodoro_paused ? "Resume" : "Pause",
+                bgm_name, snd_vol);
+        } else {
+            snprintf(footer_buf, sizeof(footer_buf),
+                "\033[1;37m[E]\033[0m \033[38;2;255;200;90m%s\033[0m  \033[38;2;160;160;160m[Space] 360°  [P] %s  [B] ♫ %s  [M] %s  [-/+] %d%%  [S] Skip  [Q] Quit\033[0m",
+                g_is_bloodborne ? "Awaken" : "Rekindle",
+                g_pomodoro_paused ? "Resume" : "Pause",
+                bgm_name, snd_mode, snd_vol);
+        }
     } else if (g_fire_state == FIRE_STATE_EXTINGUISHED) {
         snprintf(footer_buf, sizeof(footer_buf),
-            "\033[1;37m[E]\033[0m \033[38;2;255;200;90mKindle New Cycle\033[0m   "
-            "\033[38;2;160;160;160m[Space] 360°   [B] ♫ %s   [M] %s   [-/+] %d%%   [Q] Quit\033[0m",
+            compact_footer
+            ? "\033[1;37m[E]\033[0m \033[38;2;255;200;90m%s\033[0m  \033[38;2;160;160;160m[B] %s  [M] %s %d%%  [Q] Quit\033[0m"
+            : "\033[1;37m[E]\033[0m \033[38;2;255;200;90m%s\033[0m  \033[38;2;160;160;160m[Space] 360°  [B] ♫ %s  [M] %s  [-/+] %d%%  [Q] Quit\033[0m",
+            g_is_bloodborne ? "Light Lamp" : "Kindle New Cycle",
             bgm_name, snd_mode, snd_vol);
     } else {
         // Active LIT FOCUS
-        if (g_is_dark_souls) {
+        const char *act_key = (!g_is_dark_souls && !g_is_bloodborne) ? "[F]" : "[E]";
+        const char *act_lbl = g_is_bloodborne ? "Tend" : (g_is_dark_souls ? "Stoke" : "Wood");
+        const char *act_col = g_is_bloodborne ? "\033[38;2;190;170;240m" : "\033[38;2;255;200;90m";
+        if (compact_footer) {
             snprintf(footer_buf, sizeof(footer_buf),
-                "\033[1;37m[E]\033[0m \033[38;2;255;200;90mStoke\033[0m   "
-                "\033[38;2;160;160;160m[Space] 360°   [P] %s   [B] ♫ %s   [M] %s   [-/+] %d%%   [S] Skip   [Q] Quit\033[0m",
+                "\033[1;37m%s\033[0m %s%s\033[0m  \033[38;2;160;160;160m[P] %s  [B] %s  [M] %d%%  [S] Skip  [Q] Quit\033[0m",
+                act_key, act_col, act_lbl,
                 g_pomodoro_paused ? "Resume" : "Pause",
-                bgm_name, snd_mode, snd_vol);
+                bgm_name, snd_vol);
         } else {
             snprintf(footer_buf, sizeof(footer_buf),
-                "\033[1;37m[F]\033[0m \033[38;2;255;200;90mWood\033[0m   "
-                "\033[38;2;160;160;160m[Space] 360°   [P] %s   [B] ♫ %s   [M] %s   [-/+] %d%%   [S] Skip   [Q] Quit\033[0m",
+                "\033[1;37m%s\033[0m %s%s\033[0m  \033[38;2;160;160;160m[Space] 360°  [P] %s  [B] ♫ %s  [M] %s  [-/+] %d%%  [S] Skip  [Q] Quit\033[0m",
+                act_key, act_col, act_lbl,
                 g_pomodoro_paused ? "Resume" : "Pause",
                 bgm_name, snd_mode, snd_vol);
         }
@@ -4368,87 +5892,6 @@ static int format_frame_buffer(char *buf, int buf_cap) {
 
     n = snprintf(buf + buf_len, buf_cap - buf_len, " %s ", footer_buf);
     if (n > 0) buf_len += n;
-
-    // -------------------------------------------------------------------------
-    // CINEMATIC BANNER OVERLAYS (Lit, Rest, Extinguished)
-    // -------------------------------------------------------------------------
-    if (g_banner_timer > 0.0f && g_banner_type == BANNER_LIT) {
-        float alpha = 1.0f;
-        if (g_banner_timer > 3.3f) {
-            alpha = (4.0f - g_banner_timer) / 0.7f;
-        } else if (g_banner_timer < 0.8f) {
-            alpha = g_banner_timer / 0.8f;
-        }
-        if (alpha < 0.05f) alpha = 0.05f;
-        if (alpha > 1.0f) alpha = 1.0f;
-
-        int center_row = text_rows / 2;
-        int banner_row = center_row - 2;
-        if (banner_row < 2) banner_row = 2;
-
-        int r_acc = (int)(185.0f * alpha), g_acc = (int)(135.0f * alpha), b_acc = (int)(55.0f * alpha);
-        if (g_pixel_w >= 67) {
-            static const char *s_bonfire_lit_font[3] = {
-                "█▀▀█  █▀▀█  █▄  █  █▀▀  ▀█▀  █▀▀█  █▀▀      █    ▀█▀  ▀█▀",
-                "█▀▀▄  █  █  █ ▀▄█  █▀▀   █   █▄▄▀  █▀▀      █     █    █ ",
-                "▀▀▀   ▀▀▀▀  ▀   ▀  ▀    ▀▀▀  ▀  ▀  ▀▀▀      ▀▀▀  ▀▀▀   ▀ "
-            };
-            int banner_w = 63;
-            int start_col = (g_pixel_w - banner_w) / 2 + 1;
-
-            int r0 = (int)(255.0f * alpha), g0 = (int)(245.0f * alpha), b0 = (int)(185.0f * alpha);
-            int r1 = (int)(250.0f * alpha), g1 = (int)(200.0f * alpha), b1 = (int)(75.0f * alpha);
-            int r2 = (int)(215.0f * alpha), g2 = (int)(135.0f * alpha), b2 = (int)(35.0f * alpha);
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm  ─── ── ───────────────────────────────────────────── ── ───  \033[0m",
-                banner_row, start_col, r_acc, g_acc, b_acc);
-            if (n > 0) buf_len += n;
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                banner_row + 1, start_col, r0, g0, b0, s_bonfire_lit_font[0]);
-            if (n > 0) buf_len += n;
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                banner_row + 2, start_col, r1, g1, b1, s_bonfire_lit_font[1]);
-            if (n > 0) buf_len += n;
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm   %s   \033[0m",
-                banner_row + 3, start_col, r2, g2, b2, s_bonfire_lit_font[2]);
-            if (n > 0) buf_len += n;
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm  ─── ── ───────────────────────────────────────────── ── ───  \033[0m",
-                banner_row + 4, start_col, r_acc, g_acc, b_acc);
-            if (n > 0) buf_len += n;
-        } else {
-            const char *title = "B O N F I R E   L I T";
-            int title_len = 21;
-            int banner_w = 44;
-            if (banner_w > g_pixel_w - 4) banner_w = g_pixel_w - 4;
-            int start_col = (g_pixel_w - banner_w) / 2 + 1;
-            int text_col = (g_pixel_w - title_len) / 2 + 1;
-            int r_text = (int)(255.0f * alpha), g_text = (int)(225.0f * alpha), b_text = (int)(130.0f * alpha);
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm── ─── ─────────────────────────────── ─── ──\033[0m",
-                banner_row, start_col, r_acc, g_acc, b_acc);
-            if (n > 0) buf_len += n;
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm%s\033[0m",
-                banner_row + 1, text_col, r_text, g_text, b_text, title);
-            if (n > 0) buf_len += n;
-
-            n = snprintf(buf + buf_len, buf_cap - buf_len,
-                "\033[%d;%dH\033[48;2;12;8;6m\033[1;38;2;%d;%d;%dm── ─── ─────────────────────────────── ─── ──\033[0m",
-                banner_row + 2, start_col, r_acc, g_acc, b_acc);
-            if (n > 0) buf_len += n;
-        }
-    }
 
     // -------------------------------------------------------------------------
     // CONFIRMATION MODAL OVERLAY (Quit or Skip confirmation)
@@ -4464,9 +5907,12 @@ static int format_frame_buffer(char *buf, int buf_cap) {
 
 static void present_frame(void) {
     static char s_present_buf[524288];
-    int len = format_frame_buffer(s_present_buf, sizeof(s_present_buf));
+    // Wrap frame in DEC Mode 2026 Synchronized Output so terminals render atomically (zero text flicker)
+    memcpy(s_present_buf, "\033[?2026h", 8);
+    int len = format_frame_buffer(s_present_buf + 8, sizeof(s_present_buf) - 16);
     if (len > 0) {
-        safe_write(STDOUT_FILENO, s_present_buf, len);
+        memcpy(s_present_buf + 8 + len, "\033[?2026l", 8);
+        safe_write(STDOUT_FILENO, s_present_buf, (size_t)(8 + len + 8));
     }
 }
 
@@ -4646,7 +6092,7 @@ static void send_system_notification(const char *title, const char *msg) {
 static void ignite_fireplace(bool is_rekindle) {
     if (g_fire_state == FIRE_STATE_LIT_FOCUS && !is_rekindle) return;
 
-    if (g_is_dark_souls) {
+    if (g_is_dark_souls || g_is_bloodborne) {
         play_bonfire_sound();
     }
 
@@ -4654,34 +6100,56 @@ static void ignite_fireplace(bool is_rekindle) {
     g_bonfire_lit = true;
     g_ignition_timer = 0.01f;
     g_banner_type = BANNER_LIT;
-    g_banner_timer = 4.0f;
+    g_banner_timer = 3.6f;
     g_pomodoro_elapsed = 0.0f;
     g_pomodoro_paused = false;
     g_cycle_logged = false;
 
-    // Mini-explosão radial de fagulhas 3D e brasas estilo Dark Souls para todas as fogueiras
-    for (int i = 0; i < 180; i++) {
-        float angle = rand_f() * 2.0f * (float)M_PI;
-        float r = 0.10f + 0.90f * rand_f();
-        Vec3 sp_p = (Vec3){
-            (g_is_dark_souls ? 0.04f : 0.0f) + r * cosf(angle),
-            -2.85f + rand_f() * 0.95f,
-            (g_is_dark_souls ? -0.04f : 0.0f) + r * sinf(angle)
-        };
-        float speed = 2.4f + rand_f() * 5.0f;
-        float v_up = 3.8f + rand_f() * 5.8f;
-        Vec3 sp_v = (Vec3){
-            cosf(angle) * speed,
-            v_up,
-            sinf(angle) * speed
-        };
-        RGB col = (rand_f() > 0.35f) ? PALETTE_EMBERS[4] : PALETTE_EMBERS[3];
-        spawn_spark_3d(sp_p, sp_v, rand_range(35, 75), col);
+    if (g_is_bloodborne) {
+        // Erupção espectral de fagulhas violeta/lavanda ao acender a lanterna do caçador
+        for (int i = 0; i < 140; i++) {
+            float angle = rand_f() * 2.0f * (float)M_PI;
+            float r = 0.04f + 0.35f * rand_f();
+            Vec3 sp_p = (Vec3){
+                g_lamp.flame_pos.x + r * cosf(angle),
+                g_lamp.flame_pos.y - 0.20f + rand_f() * 0.40f,
+                g_lamp.flame_pos.z + r * sinf(angle)
+            };
+            float speed = 1.4f + rand_f() * 3.6f;
+            float v_up = 2.4f + rand_f() * 5.2f;
+            Vec3 sp_v = (Vec3){
+                cosf(angle) * speed,
+                v_up,
+                sinf(angle) * speed
+            };
+            RGB col = (rand_f() > 0.45f) ? PALETTE_SPECTRAL[2] : (rand_f() > 0.25f ? PALETTE_SPECTRAL[1] : PALETTE_SPECTRAL[0]);
+            spawn_spark_3d(sp_p, sp_v, rand_range(30, 75), col);
+        }
+    } else {
+        // Mini-explosão radial de fagulhas 3D e brasas estilo Dark Souls para fogueiras
+        for (int i = 0; i < 180; i++) {
+            float angle = rand_f() * 2.0f * (float)M_PI;
+            float r = 0.10f + 0.90f * rand_f();
+            Vec3 sp_p = (Vec3){
+                (g_is_dark_souls ? 0.04f : 0.0f) + r * cosf(angle),
+                -2.85f + rand_f() * 0.95f,
+                (g_is_dark_souls ? -0.04f : 0.0f) + r * sinf(angle)
+            };
+            float speed = 2.4f + rand_f() * 5.0f;
+            float v_up = 3.8f + rand_f() * 5.8f;
+            Vec3 sp_v = (Vec3){
+                cosf(angle) * speed,
+                v_up,
+                sinf(angle) * speed
+            };
+            RGB col = (rand_f() > 0.35f) ? PALETTE_EMBERS[4] : PALETTE_EMBERS[3];
+            spawn_spark_3d(sp_p, sp_v, rand_range(35, 75), col);
+        }
     }
 
     g_ash_bed.heat = 1.0f;
 
-    if (!g_is_dark_souls) {
+    if (!g_is_dark_souls && !g_is_bloodborne) {
         if (is_rekindle) {
             stoke_fire_add_wood();
         } else {
@@ -4695,13 +6163,15 @@ static void ignite_fireplace(bool is_rekindle) {
         }
     }
 
-    for (int y = 0; y < g_pixel_h; y++) {
-        for (int x = 0; x < g_pixel_w; x++) {
-            int cx = g_pixel_w / 2;
-            int cy = (int)(g_pixel_h * 0.72f);
-            int dx = x - cx, dy = y - cy;
-            if (dx*dx + dy*dy < 140) {
-                g_fire_heat[y][x] = 0.95f;
+    if (!g_is_bloodborne) {
+        for (int y = 0; y < g_pixel_h; y++) {
+            for (int x = 0; x < g_pixel_w; x++) {
+                int cx = g_pixel_w / 2;
+                int cy = (int)(g_pixel_h * 0.72f);
+                int dx = x - cx, dy = y - cy;
+                if (dx*dx + dy*dy < 140) {
+                    g_fire_heat[y][x] = 0.95f;
+                }
             }
         }
     }
@@ -4746,10 +6216,35 @@ static void drain_bracketed_paste(void) {
     }
 }
 
+static void stir_fire_sparks(int count) {
+    if (g_is_bloodborne) {
+        for (int sp = 0; sp < count; sp++) {
+            float angle = rand_f() * 2.0f * (float)M_PI;
+            float r = 0.04f + 0.30f * rand_f();
+            Vec3 sp_p = (Vec3){
+                g_lamp.flame_pos.x + r * cosf(angle),
+                g_lamp.flame_pos.y - 0.15f + rand_f() * 0.35f,
+                g_lamp.flame_pos.z + r * sinf(angle)
+            };
+            Vec3 sp_v = (Vec3){
+                cosf(angle) * (0.8f + rand_f() * 1.8f),
+                1.8f + rand_f() * 3.5f,
+                sinf(angle) * (0.8f + rand_f() * 1.8f)
+            };
+            RGB col = (rand_f() > 0.45f) ? PALETTE_SPECTRAL[2] : (rand_f() > 0.25f ? PALETTE_SPECTRAL[1] : PALETTE_SPECTRAL[0]);
+            spawn_spark_3d(sp_p, sp_v, rand_range(25, 55), col);
+        }
+    } else {
+        for (int sp = 0; sp < count; sp++) {
+            Vec3 sp_p = (Vec3){(rand_f() - 0.5f) * 1.6f, -2.6f + rand_f() * 1.4f, (rand_f() - 0.5f) * 1.6f};
+            Vec3 sp_v = (Vec3){(rand_f() - 0.5f) * 2.2f, rand_f() * 4.0f + 2.2f, (rand_f() - 0.5f) * 2.2f};
+            spawn_spark_3d(sp_p, sp_v, rand_range(28, 65), (rand_f() > 0.35f) ? PALETTE_EMBERS[3] : PALETTE_EMBERS[4]);
+        }
+    }
+}
+
 static void handle_input(void) {
     char ch;
-    static int s_last_mouse_x = -1, s_last_mouse_y = -1;
-    static bool s_mouse_dragging = false;
 
     while (read(STDIN_FILENO, &ch, 1) > 0) {
         if (ch == '\033') {
@@ -4769,7 +6264,7 @@ static void handle_input(void) {
                     continue;
                 }
 
-                // If modal is active, suppress arrow navigation and mouse interaction
+                // If modal is active, suppress arrow navigation
                 if (g_modal_active != MODAL_NONE) {
                     continue;
                 }
@@ -4784,67 +6279,6 @@ static void handle_input(void) {
                     g_cam_yaw += 0.08f;
                 } else if (seq[1] == 'D') { // Left arrow -> yaw left
                     g_cam_yaw -= 0.08f;
-                } else if (seq[1] == '<') {
-                    // SGR mouse event: \033[<btn;col;rowM or m
-                    int btn = 0, mx = 0, my = 0;
-                    char mode = 'M';
-                    if (sscanf(seq + 2, "%d;%d;%d%c", &btn, &mx, &my, &mode) >= 3) {
-                        if (mode == 'M') {
-                            if (btn == 1) { // Middle click -> Toggle 360 Turntable Orbit!
-                                g_auto_turntable = !g_auto_turntable;
-                            } else if (btn == 0) { // Left click down
-                                s_mouse_dragging = true;
-                                s_last_mouse_x = mx;
-                                s_last_mouse_y = my;
-                            } else if (btn == 32) { // Left drag motion
-                                if (s_mouse_dragging && s_last_mouse_x >= 0 && s_last_mouse_y >= 0) {
-                                    int dx = mx - s_last_mouse_x;
-                                    int dy = my - s_last_mouse_y;
-                                    g_cam_yaw += (float)dx * 0.025f;
-                                    g_cam_pitch -= (float)dy * 0.020f;
-                                    if (g_cam_pitch > 1.25f) g_cam_pitch = 1.25f;
-                                    if (g_cam_pitch < -0.15f) g_cam_pitch = -0.15f;
-                                }
-                                s_last_mouse_x = mx;
-                                s_last_mouse_y = my;
-                            } else if (btn == 64) { // Scroll up -> pitch up
-                                g_cam_pitch += 0.04f;
-                                if (g_cam_pitch > 1.25f) g_cam_pitch = 1.25f;
-                            } else if (btn == 65) { // Scroll down -> pitch down
-                                g_cam_pitch -= 0.04f;
-                                if (g_cam_pitch < -0.15f) g_cam_pitch = -0.15f;
-                            } else if (btn == 2) { // Right click -> Kindle or Stoke
-                                if (g_fire_state == FIRE_STATE_SMOLDERING_REST) {
-                                    ignite_fireplace(true);
-                                } else if (g_fire_state == FIRE_STATE_UNLIT || g_fire_state == FIRE_STATE_EXTINGUISHED) {
-                                    ignite_fireplace(false);
-                                } else {
-                                    for (int sp = 0; sp < 45; sp++) {
-                                        Vec3 sp_p = (Vec3){(rand_f() - 0.5f) * 1.6f, -2.6f + rand_f() * 1.4f, (rand_f() - 0.5f) * 1.6f};
-                                        Vec3 sp_v = (Vec3){(rand_f() - 0.5f) * 2.2f, rand_f() * 4.0f + 2.2f, (rand_f() - 0.5f) * 2.2f};
-                                        spawn_spark_3d(sp_p, sp_v, rand_range(28, 65), (rand_f() > 0.35f) ? PALETTE_EMBERS[3] : PALETTE_EMBERS[4]);
-                                    }
-                                }
-                            }
-                        } else if (mode == 'm') {
-                            if (btn == 0 || btn == 32) {
-                                s_mouse_dragging = false;
-                                s_last_mouse_x = -1;
-                                s_last_mouse_y = -1;
-                            }
-                        }
-                    }
-                } else if (seq[1] == 'M') {
-                    // X10 mouse mode fallback
-                    char m_bytes[3];
-                    if (read(STDIN_FILENO, &m_bytes[0], 1) > 0 &&
-                        read(STDIN_FILENO, &m_bytes[1], 1) > 0 &&
-                        read(STDIN_FILENO, &m_bytes[2], 1) > 0) {
-                        int btn = (unsigned char)m_bytes[0] - 32;
-                        if (btn == 1) { // Middle click in X10
-                            g_auto_turntable = !g_auto_turntable;
-                        }
-                    }
                 }
             }
             continue;
@@ -4901,11 +6335,7 @@ static void handle_input(void) {
                 } else if (g_fire_state == FIRE_STATE_UNLIT || g_fire_state == FIRE_STATE_EXTINGUISHED) {
                     ignite_fireplace(false);
                 } else {
-                    for (int sp = 0; sp < 45; sp++) {
-                        Vec3 sp_p = (Vec3){(rand_f() - 0.5f) * 1.6f, -2.6f + rand_f() * 1.4f, (rand_f() - 0.5f) * 1.6f};
-                        Vec3 sp_v = (Vec3){(rand_f() - 0.5f) * 2.2f, rand_f() * 4.0f + 2.2f, (rand_f() - 0.5f) * 2.2f};
-                        spawn_spark_3d(sp_p, sp_v, rand_range(28, 65), (rand_f() > 0.35f) ? PALETTE_EMBERS[3] : PALETTE_EMBERS[4]);
-                    }
+                    stir_fire_sparks(45);
                 }
             } else {
                 g_cam_pitch += 0.06f;
@@ -4922,12 +6352,7 @@ static void handle_input(void) {
             } else if (g_fire_state == FIRE_STATE_UNLIT || g_fire_state == FIRE_STATE_EXTINGUISHED) {
                 ignite_fireplace(false); // Acender
             } else {
-                // Fogo já ativo: avivar fagulhas
-                for (int sp = 0; sp < 55; sp++) {
-                    Vec3 sp_p = (Vec3){(rand_f() - 0.5f) * 1.6f, -2.6f + rand_f() * 1.4f, (rand_f() - 0.5f) * 1.6f};
-                    Vec3 sp_v = (Vec3){(rand_f() - 0.5f) * 2.2f, rand_f() * 4.0f + 2.2f, (rand_f() - 0.5f) * 2.2f};
-                    spawn_spark_3d(sp_p, sp_v, rand_range(28, 65), (rand_f() > 0.35f) ? PALETTE_EMBERS[3] : PALETTE_EMBERS[4]);
-                }
+                stir_fire_sparks(55);
             }
         } else if (ch == '\n' || ch == '\r') {
             if (g_fire_state == FIRE_STATE_SMOLDERING_REST) {
@@ -4938,14 +6363,10 @@ static void handle_input(void) {
         } else if (ch == ' ' || ch == 'g' || ch == 'G' || ch == 't' || ch == 'T') {
             g_auto_turntable = !g_auto_turntable;
         } else if (ch == 'f' || ch == 'F') {
-            if (!g_is_dark_souls) {
+            if (!g_is_dark_souls && !g_is_bloodborne) {
                 stoke_fire_add_wood();
             } else {
-                for (int sp = 0; sp < 45; sp++) {
-                    Vec3 sp_p = (Vec3){(rand_f() - 0.5f) * 1.6f, -2.6f + rand_f() * 1.4f, (rand_f() - 0.5f) * 1.6f};
-                    Vec3 sp_v = (Vec3){(rand_f() - 0.5f) * 2.2f, rand_f() * 4.0f + 2.2f, (rand_f() - 0.5f) * 2.2f};
-                    spawn_spark_3d(sp_p, sp_v, rand_range(28, 65), (rand_f() > 0.35f) ? PALETTE_EMBERS[3] : PALETTE_EMBERS[4]);
-                }
+                stir_fire_sparks(45);
             }
         } else if (ch == 'r' || ch == 'R') {
             g_fire_state = FIRE_STATE_UNLIT;
@@ -5166,7 +6587,7 @@ static void load_user_config(int *style, int *focus_min, int *short_break_min, i
     while (fgets(line, sizeof(line), f)) {
         int val = 0;
         if (sscanf(line, "style=%d", &val) == 1) {
-            *style = (val == 1) ? 1 : 0;
+            *style = (val >= 0 && val <= 2) ? val : 0;
         } else if (sscanf(line, "focus_min=%d", &val) == 1) {
             if (val >= 1 && val <= 180) *focus_min = val;
         } else if (sscanf(line, "short_break_min=%d", &val) == 1) {
@@ -5205,8 +6626,704 @@ static void sync_volume_config(void) {
     int short_break_min = (int)(g_short_break_duration / 60.0f);
     int long_break_min = (int)(g_long_break_duration / 60.0f);
     int sessions = g_sessions_before_long_break;
-    int style = g_is_dark_souls ? 1 : 0;
+    int style = g_is_bloodborne ? 2 : (g_is_dark_souls ? 1 : 0);
     save_user_config(style, focus_min, short_break_min, long_break_min, sessions, g_sound_volume, (int)g_music_track);
+}
+
+/* ============================================================================
+ * "ASHEN" Swept-Wing Heavy-Metal / Dark Souls ANSI Emblem for the Setup Menu
+ *
+ * 98x30 sculpted metal lettering anchored strictly on the central gothic 'H'
+ * (col 49 = page center) with the Darksign eclipse rising above it. Outer A/N
+ * concave sword-blades drape gracefully past the upper corners of the setup
+ * box. Uses half-blocks (▀▄█) for crisp contours, clean brushed forged-steel
+ * CP437 dithering (░▒▓), and \033[49m transparency for transparent terminals.
+ * ============================================================================ */
+
+#define MENU_MAX_COLS 260
+#define MENU_MAX_ROWS 100
+#define MENU_LOGO_W   98
+#define MENU_LOGO_PH  30
+#define MENU_LOGO_HEAD_ROWS 13
+#define MENU_LOGO_H_CENTER  49
+#define MENU_NFO_W    78
+#define MENU_NFO_HALF_W 39
+#define MENU_NFO_PH   34
+
+enum { MM_NONE = 0, MM_CHROME, MM_FIRE, MM_VOID, MM_EXTRUDE, MM_WARM_STEEL, MM_ASH };
+
+typedef struct {
+    uint8_t mat;
+    float pos;
+} MenuSubPx;
+
+typedef struct {
+    uint8_t glyph;   // 0=' ', 1='░', 2='▒', 3='▓', 4='█', 5='▀', 6='▄'
+    uint8_t has_bg;
+    RGB fg, bg;
+} MenuCell;
+
+typedef struct {
+    int scale;   // 1 = visible, 0 = hidden (terminal too small)
+    int width;
+    int rows;    // rows occupied above the menu box
+    int gap;
+} MenuLogoLayout;
+
+static const RGB MENU_RAMP_CHROME[7] = {
+    {12, 11, 18}, {42, 42, 54}, {78, 80, 96}, {122, 126, 144},
+    {174, 178, 194}, {224, 228, 240}, {255, 255, 255}
+};
+static const RGB MENU_RAMP_WARM_STEEL[5] = {
+    {46, 22, 16}, {102, 46, 22}, {168, 84, 30},
+    {224, 140, 52}, {252, 206, 118}
+};
+static const RGB MENU_RAMP_FIRE[8] = {
+    {26, 5, 6}, {86, 12, 10}, {158, 24, 12}, {224, 60, 14},
+    {252, 126, 24}, {255, 192, 56}, {255, 238, 148}, {255, 254, 236}
+};
+static const RGB MENU_RAMP_VOID[2] = { {5, 3, 7}, {48, 10, 12} };
+static const RGB MENU_RAMP_EXTRUDE[4] = {
+    {18, 6, 10}, {48, 12, 16}, {88, 20, 20}, {128, 30, 22}
+};
+static const RGB MENU_RAMP_ASH[5] = {
+    {22, 18, 20}, {48, 41, 43}, {80, 70, 72}, {118, 106, 108}, {154, 142, 142}
+};
+
+static const char *MENU_ASHEN_ART[MENU_LOGO_PH] = {
+    "..................................................................................................",
+    "..................................................................................................",
+    "..................................................................................................",
+    "..................................................................................................",
+    "..................................................................................................",
+    "......................#######............##............##..............................##.........",
+    "........................######............##..........##.............................###..........",
+    "........................######...#####....###........###...#########.##.............###...........",
+    "........................#####..########...####......####...#########.###...........###............",
+    ".......................###.##..###....##..#####....#####..###.....##.####.........###.............",
+    "......................####.##.###..........##........##...###.....#..#####........###.............",
+    "......................###..##.####.........###......###...###........######......###..............",
+    ".....................###...##..######......###......###...###........##.####.....###..............",
+    "....................####...##...#######....###......###...##.....#...##..###.....###..............",
+    "...................####....##......#####...############..#########...##...###...###...............",
+    "..................###########........####..############..######......##...####..###...............",
+    ".................#############........###..###......###..###.........##....####.###...............",
+    "................####.......###........###..###......###..###.........##.....#######...............",
+    "...............####........####.......###..###......###..##.........###......#######..............",
+    "..............####..........#####....###...##........##.###.........###.......######..............",
+    ".............###............##.#########...##........##.###...########.........######.............",
+    "............###.............##..########...##........##.##############..........#####.............",
+    "..........###...............##....#####...##..........#########.....##...........#####............",
+    ".........###.................#............##..........#####.........#..............####...........",
+    ".......###................................#............#............................#####.........",
+    ".....###..............................................................................####........",
+    "....##..................................................................................###.......",
+    "..................................................................................................",
+    "..................................................................................................",
+    ".................................................................................................."
+};
+
+// Slender Kiln-of-the-First-Flame charred root columns ('#' = charred root, '*' = burning ember knot)
+static const char *MENU_NFO_HALF[MENU_NFO_PH] = {
+    "......###...##.........................",
+    "....###..###..###......................",
+    "...##....*......##.....................",
+    "..##...##..............................",
+    "..##..##...............................",
+    "...###.................................",
+    "...##.#................................",
+    "..#*..##...............................",
+    "..##.##................................",
+    "...###.................................",
+    "....##.................................",
+    "...##.#................................",
+    "..##..##...............................",
+    "..#*..##...............................",
+    "...##.#................................",
+    "....##.................................",
+    "...##..................................",
+    "..##.#.................................",
+    "..#.*#.................................",
+    "...###.................................",
+    "...##.#................................",
+    "..##..##...............................",
+    "..#*..###..............................",
+    ".##....###.............................",
+    ".##..###.###.....####........####......",
+    "..####...#####*###..##########..#####*#",
+    "..##.##.....###........##.......###.##.",
+    ".##...###............................#.",
+    ".#......##.............................",
+    ".........#.............................",
+    ".......................................",
+    ".......................................",
+    ".......................................",
+    "......................................."
+};
+
+static inline char menu_nfo_char(int ax, int ay) {
+    if (ax < 0 || ax >= MENU_NFO_W || ay < 0 || ay >= MENU_NFO_PH) return '.';
+    int mx = (ax < MENU_NFO_HALF_W) ? ax : (MENU_NFO_W - 1 - ax);
+    return MENU_NFO_HALF[ay][mx];
+}
+
+static inline bool menu_nfo_solid(int ax, int ay) {
+    return menu_nfo_char(ax, ay) != '.';
+}
+
+static const RGB *menu_ramp(int mat, int *n) {
+    switch (mat) {
+        case MM_CHROME:     *n = 7; return MENU_RAMP_CHROME;
+        case MM_WARM_STEEL: *n = 5; return MENU_RAMP_WARM_STEEL;
+        case MM_FIRE:       *n = 8; return MENU_RAMP_FIRE;
+        case MM_EXTRUDE:    *n = 4; return MENU_RAMP_EXTRUDE;
+        case MM_ASH:        *n = 5; return MENU_RAMP_ASH;
+        default:            *n = 2; return MENU_RAMP_VOID;
+    }
+}
+
+static MenuSubPx s_menu_sub[MENU_MAX_ROWS * 2][MENU_MAX_COLS];
+static float s_menu_glow[MENU_MAX_ROWS][MENU_MAX_COLS];
+static char s_menu_buf[1048576];
+static int s_mcols, s_mph;
+
+static inline float menu_clampf(float v, float lo, float hi) {
+    return (v < lo) ? lo : ((v > hi) ? hi : v);
+}
+
+static inline float menu_hash2(int x, int y) {
+    uint32_t h = ((uint32_t)x * 374761393u) ^ ((uint32_t)y * 668265263u);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    h ^= (h >> 16);
+    return (float)(h & 0xFFFFu) / 65535.0f;
+}
+
+static float menu_vnoise2(float x, float y) {
+    int xi = (int)floorf(x), yi = (int)floorf(y);
+    float xf = x - (float)xi, yf = y - (float)yi;
+    float u = xf * xf * (3.0f - 2.0f * xf);
+    float v = yf * yf * (3.0f - 2.0f * yf);
+    float a = menu_hash2(xi, yi), b = menu_hash2(xi + 1, yi);
+    float c = menu_hash2(xi, yi + 1), d = menu_hash2(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+static float menu_fbm2(float x, float y) {
+    return 0.55f * menu_vnoise2(x, y)
+         + 0.30f * menu_vnoise2(x * 2.03f + 17.0f, y * 2.03f + 5.0f)
+         + 0.15f * menu_vnoise2(x * 4.11f + 3.0f, y * 4.11f + 29.0f);
+}
+
+static inline void menu_put(int x, int y, uint8_t mat, float pos) {
+    if (x < 0 || x >= s_mcols || y < 0 || y >= s_mph) return;
+    s_menu_sub[y][x].mat = mat;
+    s_menu_sub[y][x].pos = pos;
+}
+
+static inline uint8_t menu_mat_at(int x, int y) {
+    if (x < 0 || x >= s_mcols || y < 0 || y >= s_mph) return MM_NONE;
+    return s_menu_sub[y][x].mat;
+}
+
+static inline void menu_glow_add(int c, int r, int rows, float v) {
+    if (c < 0 || c >= s_mcols || r < 0 || r >= rows) return;
+    s_menu_glow[r][c] += v;
+}
+
+static inline bool menu_art_solid(int ax, int ay) {
+    if (ax < 0 || ax >= MENU_LOGO_W || ay < 0 || ay >= MENU_LOGO_PH) return false;
+    return MENU_ASHEN_ART[ay][ax] != '.';
+}
+
+static MenuLogoLayout menu_logo_layout(int cols, int rows, int box_h) {
+    MenuLogoLayout L;
+    memset(&L, 0, sizeof(L));
+    if (cols >= 68 && rows >= MENU_LOGO_HEAD_ROWS + box_h) {
+        L.scale = 1;
+        L.width = MENU_LOGO_W;
+        L.rows = MENU_LOGO_HEAD_ROWS;
+        L.gap = 0; // Center letters clear the box while outer A/N blades drape beside top corners
+    }
+    return L;
+}
+
+static int render_menu_ansi_backdrop(char *buf, size_t buf_cap,
+                                     int cols, int rows,
+                                     int start_r, int start_c, int box_w, int box_h,
+                                     float anim_t) {
+    if (cols > MENU_MAX_COLS) cols = MENU_MAX_COLS;
+    if (rows > MENU_MAX_ROWS) rows = MENU_MAX_ROWS;
+    if (cols < 20 || rows < 10) return 0;
+
+    int ph = rows * 2;
+    s_mcols = cols;
+    s_mph = ph;
+    memset(s_menu_sub, 0, sizeof(s_menu_sub));
+    memset(s_menu_glow, 0, sizeof(s_menu_glow));
+
+    (void)box_w;
+    int box_top_r = start_r - 1;
+    int box_left_c = start_c - 1;
+
+    MenuLogoLayout LL = menu_logo_layout(cols, rows, box_h);
+    int logo_top_r = box_top_r - LL.gap - LL.rows;
+
+    if (LL.scale > 0 && logo_top_r >= 0) {
+        // Anchor 'H' strictly to the horizontal center of the page
+        int lx0 = (cols / 2) - MENU_LOGO_H_CENTER;
+        int ly0 = logo_top_r * 2;
+
+        // ---- 1. Monumental True Circular DS3 Darksign Eclipse centered strictly on 'H' ----
+        float ecx = (float)lx0 + (float)MENU_LOGO_H_CENTER;
+        float r_void, r_ring, r_rim, ecy;
+        if (ly0 >= 16) {
+            // Large terminal (rows >= 46): huge monumental eclipse spanning across S-H-E
+            r_void = 14.75f;
+            r_ring = 15.75f;
+            r_rim  = 16.75f;
+            ecy    = (float)ly0 + 4.0f;
+        } else if (ly0 >= 12) {
+            // Standard terminal (rows 42..45): monumental 32-col eclipse unclipped to top
+            r_void = 13.75f;
+            r_ring = 14.75f;
+            r_rim  = 15.75f;
+            ecy    = (float)ly0 + 5.0f;
+        } else if (ly0 >= 6) {
+            // Compact terminal (rows 36..41): large 28-col eclipse unclipped
+            r_void = 11.75f;
+            r_ring = 12.75f;
+            r_rim  = 13.75f;
+            ecy    = (float)ly0 + 8.0f;
+        } else {
+            // Ultra-short terminal (rows 30..35): still large & perfectly round without flat-clip
+            r_void = 9.75f;
+            r_ring = 10.75f;
+            r_rim  = 11.75f;
+            ecy    = (float)ly0 + 10.0f;
+        }
+        if (ecy < r_rim + 0.25f) ecy = floorf(r_rim + 0.5f);
+
+        int ey0 = (int)floorf(ecy - r_rim - 2.0f);
+        if (ey0 < 0) ey0 = 0;
+        int ey1 = (ly0 + 26 < ph) ? (ly0 + 26) : ph;
+        int ex0 = ((int)ecx - 26 > 0) ? ((int)ecx - 26) : 0;
+        int ex1 = ((int)ecx + 27 < cols) ? ((int)ecx + 27) : cols;
+
+        for (int y = ey0; y < ey1; y++) {
+            for (int x = ex0; x < ex1; x++) {
+                float dx = ((float)x + 0.5f) - ecx;
+                float dy = ((float)y + 0.5f) - ecy;
+                float dist = sqrtf(dx * dx + dy * dy);
+
+                if (dist < r_void) {
+                    // Pitch-black spherical void with whisper-thin ember rim right inside the ring
+                    float inner_warm = (dist > r_void - 0.85f) ? 1.0f : 0.0f;
+                    menu_put(x, y, MM_VOID, inner_warm);
+                } else if (dist < r_ring) {
+                    // Razor-thin blazing white-gold Darksign ring (pure circular geometry)
+                    float t = (dist - r_void) / (r_ring - r_void);
+                    float n = menu_vnoise2(dx * 0.45f + anim_t * 1.2f, dy * 0.45f - anim_t * 0.6f);
+                    // Slightly hotter at the bottom pole where the molten bleed gathers
+                    float pole_boost = (dy > 0.0f && fabsf(dx) < 3.5f) ? 0.35f : 0.0f;
+                    float p = 6.95f - 1.55f * t + pole_boost + (n - 0.5f) * 0.40f;
+                    menu_put(x, y, MM_FIRE, menu_clampf(p, 4.6f, 7.0f));
+                } else if (dist < r_rim) {
+                    // Crisp molten orange -> deep fiery crimson outer rim hugging the thin ring
+                    float t = (dist - r_ring) / (r_rim - r_ring);
+                    float n = menu_vnoise2(dx * 0.50f - anim_t * 1.0f, dy * 0.50f);
+                    float p = 4.15f - 2.35f * t + (n - 0.5f) * 0.45f;
+                    menu_put(x, y, MM_FIRE, menu_clampf(p, 1.3f, 4.5f));
+                }
+            }
+        }
+
+        // Slender luminous DS3 molten bleed filament pouring straight down through 'H'
+        float d_start_f = ecy + r_void - 0.15f;
+        int d_start = (int)floorf(d_start_f);
+        int d_end = (ly0 + 25 < ph) ? (ly0 + 25) : ph;
+        for (int y = d_start; y < d_end; y++) {
+            float dy_pole = ((float)y + 0.5f) - (ecy + r_ring);
+            float t = menu_clampf(((float)y - d_start_f) / fmaxf(1.0f, (float)(d_end - 1) - d_start_f), 0.0f, 1.0f);
+            // Graceful teardrop meniscus at the bottom pole, focusing into a slender 2px luminous filament
+            float funnel = (dy_pole < 3.2f) ? 1.55f * expf(-fmaxf(0.0f, dy_pole + 0.5f) * 0.65f) : 0.0f;
+            float w = 0.85f + funnel;
+            float shimmer = menu_vnoise2((float)y * 0.45f - anim_t * 2.8f, 13.7f);
+            for (int x = (int)ecx - 4; x <= (int)ecx + 4; x++) {
+                float dx = ((float)x + 0.5f) - ecx;
+                float dd = fabsf(dx);
+                // Preserve the inner black sphere except at the bottom meniscus rim
+                float r_here = sqrtf(dx * dx + (((float)y + 0.5f) - ecy) * (((float)y + 0.5f) - ecy));
+                if (r_here < r_void - 0.10f) continue;
+                if (dd <= w) {
+                    // Center two columns sit at dd = 0.5; measure radial falloff from that bright core
+                    float edge_d = fmaxf(0.0f, dd - 0.50f);
+                    float core = 1.0f - edge_d / fmaxf(0.35f, w - 0.40f);
+                    float neck_heat = (dy_pole < 2.8f) ? 1.15f * (1.0f - fmaxf(0.0f, dy_pole) / 2.8f) : 0.0f;
+                    float p = 1.95f + core * 3.85f + neck_heat - 1.85f * t + (shimmer - 0.5f) * 0.45f;
+                    // Smooth glowing ember fade right above the setup box border
+                    if (y >= d_end - 2) p -= 0.70f * (float)(y - (d_end - 3));
+                    if (menu_mat_at(x, y) != MM_FIRE || s_menu_sub[y][x].pos < p) {
+                        menu_put(x, y, MM_FIRE, menu_clampf(p, 1.1f, 6.8f));
+                    }
+                }
+            }
+        }
+
+        // Sleek circular crimson-amber atmospheric corona + DS3 equatorial smoky wisps
+        int glow_r0 = (int)floorf((ecy - r_rim - 6.0f) * 0.5f);
+        if (glow_r0 < 0) glow_r0 = 0;
+        int glow_r1 = logo_top_r + MENU_LOGO_HEAD_ROWS;
+        if (glow_r1 > rows) glow_r1 = rows;
+        int glow_c0 = ((int)ecx - 34 > 0) ? ((int)ecx - 34) : 0;
+        int glow_c1 = ((int)ecx + 34 < cols) ? ((int)ecx + 34) : (cols - 1);
+        for (int r = glow_r0; r < glow_r1; r++) {
+            for (int c = glow_c0; c <= glow_c1; c++) {
+                float dx = ((float)c + 0.5f) - ecx;
+                float dy = ((float)(r * 2 + 1)) - ecy;
+                float dist = sqrtf(dx * dx + dy * dy);
+                float g = 0.0f;
+
+                if (dist > r_void) {
+                    // Tight, perfectly circular radial aura around the ring (never a tall top tower)
+                    float dr = fmaxf(0.0f, dist - (r_rim - 0.45f));
+                    float rad_sigma = 2.35f;
+                    g = 0.54f * expf(-(dr * dr) / (2.0f * rad_sigma * rad_sigma));
+
+                    // Organic DS3 smoky-fire wings flaring gently off the left & right equator
+                    float eq_y = (dy - 0.5f) / 4.2f;
+                    float eq_band = expf(-(eq_y * eq_y));
+                    if (eq_band > 0.08f && fabsf(dx) > r_ring * 0.85f) {
+                        float wing_d = fmaxf(0.0f, fabsf(dx) - r_rim) / 7.5f;
+                        float wn = menu_fbm2(dx * 0.20f + 11.0f, dy * 0.24f - anim_t * 0.35f);
+                        float wisp = 0.38f * eq_band * expf(-(wing_d * wing_d)) * (0.45f + 0.95f * wn);
+                        if (wisp > g) g = wisp;
+                    }
+                }
+
+                // Subtle crimson mist hugging the slender vertical molten bleed stream
+                if (dy > r_ring - 1.0f && (r * 2) < d_end) {
+                    float beam_t = menu_clampf((dy - r_ring) / fmaxf(1.0f, (float)d_end - (ecy + r_ring)), 0.0f, 1.0f);
+                    float bg = 0.38f * (1.0f - 0.50f * beam_t) * expf(-(dx * dx) / (2.0f * 1.85f * 1.85f));
+                    if (bg > g) g = bg;
+                }
+
+                if (g > 0.01f) menu_glow_add(c, r, rows, g);
+            }
+        }
+
+        // Keep rx/ry aliases equal to r_ring for warm-steel reflection & extrusion shading below
+        float rx = r_ring;
+        float ry = r_ring;
+
+        // ---- 2. Pitch-Black Contour Outline + Tight Clean 3D Extrusion ----
+        for (int ay = -1; ay <= MENU_LOGO_PH; ay++) {
+            for (int ax = -1; ax <= MENU_LOGO_W; ax++) {
+                int x = lx0 + ax, y = ly0 + ay;
+                if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
+                if (menu_art_solid(ax, ay)) continue;
+
+                bool near = false;
+                for (int dy = -1; dy <= 1 && !near; dy++) {
+                    for (int dx = -1; dx <= 1 && !near; dx++) {
+                        if (menu_art_solid(ax + dx, ay + dy)) near = true;
+                    }
+                }
+                if (near) {
+                    menu_put(x, y, MM_VOID, 0.0f);
+                } else {
+                    bool ext = (ay <= 24) && (menu_art_solid(ax - 1, ay - 2) || menu_art_solid(ax - 2, ay - 1));
+                    if (ext && menu_mat_at(x, y) == MM_NONE) {
+                        float ddx = (((float)x + 0.5f) - ecx) / rx;
+                        float ddy = (((float)y + 0.5f) - ecy) / ry;
+                        float warm = menu_clampf(1.30f - sqrtf(ddx * ddx + ddy * ddy) * 0.42f, 0.0f, 1.0f);
+                        menu_put(x, y, MM_EXTRUDE, 0.4f + 2.1f * warm);
+                    }
+                }
+            }
+        }
+
+        // ---- 3. Clean Cohesive Brushed Forged-Steel Chrome Shader ----
+        float sweep = fmodf(anim_t * 20.0f, 160.0f) - 30.0f;
+        for (int ay = 0; ay < MENU_LOGO_PH; ay++) {
+            for (int ax = 0; ax < MENU_LOGO_W; ax++) {
+                if (!menu_art_solid(ax, ay)) continue;
+                int x = lx0 + ax, y = ly0 + ay;
+                if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
+
+                float v = menu_clampf(((float)ay - 5.0f) / 21.0f, 0.0f, 1.0f);
+                bool up    = !menu_art_solid(ax, ay - 1);
+                bool left  = !menu_art_solid(ax - 1, ay);
+                bool down  = !menu_art_solid(ax, ay + 1);
+                bool right = !menu_art_solid(ax + 1, ay);
+
+                // Smooth metallic horizon curve across ASHEN (zero blotchy holes)
+                float wave_v = menu_clampf(v + 0.045f * sinf((float)(ax - MENU_LOGO_H_CENTER) * 0.095f), 0.0f, 1.0f);
+                float pos;
+                if (wave_v < 0.40f)      pos = 5.4f - wave_v * 5.0f;
+                else if (wave_v < 0.52f) pos = 2.0f + (wave_v - 0.40f) * 4.5f;
+                else                     pos = 4.1f - (wave_v - 0.52f) * 4.6f;
+
+                // Subtle fine brushed-steel grain
+                pos += (menu_vnoise2((float)ax * 0.35f, (float)ay * 0.12f) - 0.5f) * 0.38f;
+
+                // Clean bevel rim lighting
+                if (up)                   pos += 1.05f;
+                else if (left && !down)   pos += 0.45f;
+                if (down && right)        pos -= 0.75f;
+                else if (down)            pos -= 0.45f;
+
+                // Animated specular sheen gliding across forged steel
+                float sw = ((float)ax + (float)ay * 0.65f) - sweep;
+                if (fabsf(sw) < 2.8f) {
+                    pos += 1.45f * (1.0f - fabsf(sw) / 2.8f);
+                }
+
+                // Coherent warm bronze-steel reflection ONLY on edges hugging the eclipse ring
+                float dx_e = ((float)x + 0.5f) - ecx;
+                float dy_e = ((float)y + 0.5f) - ecy;
+                float rn_e = sqrtf((dx_e / rx) * (dx_e / rx) + (dy_e / ry) * (dy_e / ry));
+                float d_ring = fabsf(rn_e - 0.94f) / 0.26f;
+                float near_ring = expf(-(d_ring * d_ring));
+                bool edge_facing = (dx_e < -2.0f && right) || (dx_e > 2.0f && left) || (dy_e < -2.0f && down);
+
+                if (near_ring > 0.68f && edge_facing && !up && fabsf(dx_e) <= rx + 0.8f) {
+                    menu_put(x, y, MM_WARM_STEEL, menu_clampf(1.6f + 2.2f * near_ring, 0.8f, 4.0f));
+                } else {
+                    menu_put(x, y, MM_CHROME, menu_clampf(pos, 0.8f, 6.0f));
+                }
+            }
+        }
+
+        // ---- 4. Sparse rising embers drifting in open sky around the Darksign ----
+        for (int i = 0; i < 6; i++) {
+            float sx = menu_hash2(i * 17 + 5, 401);
+            float st = menu_hash2(i * 29 + 3, 503);
+            float sp = 0.14f + 0.14f * menu_hash2(i * 43 + 9, 607);
+            float life = fmodf(anim_t * sp + st, 1.0f);
+            int ex = (int)floorf(ecx + (sx - 0.5f) * 52.0f + sinf(anim_t * 1.5f + st * 21.0f) * 1.5f);
+            int ey = (int)floorf((ecy + 2.0f) - life * (r_rim + 4.0f));
+            if (ey >= ly0 + 5) continue;
+            if (menu_mat_at(ex, ey) != MM_NONE) continue;
+            if (menu_mat_at(ex - 1, ey) != MM_NONE || menu_mat_at(ex + 1, ey) != MM_NONE ||
+                menu_mat_at(ex, ey - 1) != MM_NONE || menu_mat_at(ex, ey + 1) != MM_NONE) continue;
+            float fade = sinf(life * (float)M_PI);
+            if (fade > 0.52f) menu_put(ex, ey, MM_FIRE, 2.8f + 2.2f * fade);
+        }
+    }
+
+    // ---- 4b. Slender Burning Kiln Roots framing the transparent Setup Menu ----
+    if (cols >= MENU_NFO_W && rows >= box_h) {
+        int nx0 = box_left_c;
+        int ny0 = box_top_r * 2;
+
+        // 1px dark contour around roots (only into empty space so ASHEN blades stay untouched)
+        for (int ay = -1; ay <= MENU_NFO_PH; ay++) {
+            for (int ax = -1; ax <= MENU_NFO_W; ax++) {
+                int x = nx0 + ax, y = ny0 + ay;
+                if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
+                if (menu_nfo_solid(ax, ay)) continue;
+
+                bool near = false;
+                for (int dy = -1; dy <= 1 && !near; dy++) {
+                    for (int dx = -1; dx <= 1 && !near; dx++) {
+                        if (menu_nfo_solid(ax + dx, ay + dy)) near = true;
+                    }
+                }
+                if (near && menu_mat_at(x, y) == MM_NONE) {
+                    menu_put(x, y, MM_VOID, 0.0f);
+                }
+            }
+        }
+
+        // Shade charred ash-wood bark + glowing internal ember veins near '*' knots
+        for (int ay = 0; ay < MENU_NFO_PH; ay++) {
+            for (int ax = 0; ax < MENU_NFO_W; ax++) {
+                char mc = menu_nfo_char(ax, ay);
+                if (mc == '.') continue;
+                int x = nx0 + ax, y = ny0 + ay;
+                if (x < 0 || x >= cols || y < 0 || y >= ph) continue;
+
+                // Measure proximity to nearest burning ember knot '*'
+                float min_knot = 9.0f;
+                for (int dy = -3; dy <= 3; dy++) {
+                    for (int dx = -3; dx <= 3; dx++) {
+                        if (menu_nfo_char(ax + dx, ay + dy) == '*') {
+                            float d = sqrtf((float)(dx * dx + dy * dy));
+                            if (d < min_knot) min_knot = d;
+                        }
+                    }
+                }
+
+                // Independent organic flicker per side so left & right root flames feel alive
+                float side_phase = (ax < MENU_NFO_HALF_W) ? 0.0f : 7.3f;
+                float n = menu_vnoise2((float)ax * 0.55f + side_phase, (float)ay * 0.45f - anim_t * 2.4f);
+                float pulse = 0.78f + 0.22f * sinf(anim_t * 3.8f + (float)ay * 0.45f + side_phase);
+
+                if (mc == '*') {
+                    menu_put(x, y, MM_FIRE, menu_clampf(5.6f + 1.2f * n * pulse, 4.4f, 6.9f));
+                } else if (min_knot < 2.15f && (min_knot < 1.35f || n > 0.42f)) {
+                    // Glowing ember fissures spreading through charred bark around each burning knot
+                    float heat = (1.0f - min_knot / 2.25f) * (3.8f + 1.6f * n) * pulse;
+                    menu_put(x, y, MM_FIRE, menu_clampf(0.8f + heat, 0.8f, 5.4f));
+                } else {
+                    // Charred dark ash-wood bark with fine grain and subtle warm rim facing inward
+                    bool up    = !menu_nfo_solid(ax, ay - 1);
+                    bool down  = !menu_nfo_solid(ax, ay + 1);
+                    float grain = menu_vnoise2((float)ax * 0.65f, (float)ay * 0.25f);
+                    float pos = 1.6f + 1.5f * grain;
+                    if (up)   pos += 0.85f;
+                    if (down) pos -= 0.55f;
+                    // Bottom center thread stays sleek dark ash-steel
+                    if (ay == 25 && ax >= 20 && ax < MENU_NFO_W - 20) pos = 1.8f + 0.8f * grain;
+                    menu_put(x, y, MM_ASH, menu_clampf(pos, 0.4f, 4.0f));
+                }
+            }
+        }
+
+        // Animated tongues of flame licking upward from each '*' ember knot + soft transparent glow
+        for (int ay = 0; ay < MENU_NFO_PH; ay++) {
+            for (int ax = 0; ax < MENU_NFO_W; ax++) {
+                if (menu_nfo_char(ax, ay) != '*') continue;
+                int x0 = nx0 + ax, y0 = ny0 + ay;
+                float seed = (float)(ax * 13 + ay * 7) * 0.37f;
+                float flicker = 0.65f + 0.35f * sinf(anim_t * 6.2f + seed);
+                int flame_h = (ay >= 24) ? 1 : (int)(2.5f + 2.2f * flicker);
+
+                for (int fy = 1; fy <= flame_h; fy++) {
+                    float t = (float)fy / (float)(flame_h + 1);
+                    float sway = sinf(anim_t * 5.0f + seed + (float)fy * 0.9f) * 0.65f * t;
+                    int fx = x0 + (int)lroundf(sway);
+                    int fyy = y0 - fy;
+                    if (fx < 0 || fx >= cols || fyy < 0 || fyy >= ph) continue;
+                    // Never overwrite text safe zone (cols nx0+10 .. nx0+MENU_NFO_W-11) except along the lower root arch
+                    if (ay < 24 && fx >= nx0 + 10 && fx <= nx0 + MENU_NFO_W - 11) continue;
+                    if (ay >= 24 && fyy < ny0 + 24) continue;
+                    uint8_t cur = menu_mat_at(fx, fyy);
+                    if (cur == MM_NONE || cur == MM_VOID) {
+                        float fp = 5.4f * (1.0f - t) + 1.2f * flicker;
+                        menu_put(fx, fyy, MM_FIRE, menu_clampf(fp, 1.2f, 6.2f));
+                    }
+                }
+
+                // Soft atmospheric crimson glow hugging each burning root knot
+                int kr = y0 / 2;
+                for (int dr = -1; dr <= 1; dr++) {
+                    for (int dc = -2; dc <= 2; dc++) {
+                        int gc = x0 + dc, gr = kr + dr;
+                        if (ay < 24 && gc >= nx0 + 10 && gc <= nx0 + MENU_NFO_W - 11) continue;
+                        if (ay >= 24 && (gr < box_top_r + 12 || gr > box_top_r + 13)) continue;
+                        float d2 = (float)(dc * dc) * 0.55f + (float)(dr * dr) * 1.4f;
+                        float g = (0.34f * flicker) * expf(-d2 * 0.65f);
+                        if (g > 0.05f) menu_glow_add(gc, gr, rows, g);
+                    }
+                }
+            }
+        }
+
+        // Delicate rising embers drifting off the two burning root columns
+        for (int i = 0; i < 6; i++) {
+            bool right_side = (i & 1) != 0;
+            float st = menu_hash2(i * 31 + 11, 709);
+            float sp = 0.22f + 0.16f * menu_hash2(i * 47 + 5, 811);
+            float life = fmodf(anim_t * sp + st, 1.0f);
+            float base_x = right_side ? (float)(nx0 + MENU_NFO_W - 5) : (float)(nx0 + 4);
+            int ex = (int)floorf(base_x + sinf(anim_t * 2.4f + st * 19.0f) * 2.2f);
+            int ey = (int)floorf((float)(ny0 + 24) - life * 22.0f);
+            if (ex >= nx0 + 10 && ex <= nx0 + MENU_NFO_W - 11) continue;
+            if (menu_mat_at(ex, ey) != MM_NONE) continue;
+            float fade = sinf(life * (float)M_PI);
+            if (fade > 0.50f) menu_put(ex, ey, MM_FIRE, 2.8f + 2.6f * fade);
+        }
+    }
+
+    // ---- 5. Quantize to ANSI cells and emit ----
+    static const char *GLYPHS[7] = { " ", "░", "▒", "▓", "█", "▀", "▄" };
+    int text_c0 = box_left_c + 10;
+    int text_c1 = box_left_c + MENU_NFO_W - 11;
+
+    int len = 0;
+    int cur_fg = -1, cur_bg = -2;
+    for (int r = 0; r < rows; r++) {
+        int max_c = (r == rows - 1) ? (cols - 1) : cols;
+        bool positioned = false;
+        for (int c = 0; c < max_c; c++) {
+            // Skip interior text rows so menu text is never overwritten by spaces before redraw (zero flicker)
+            bool skip_header = (r == box_top_r + 1 && c >= box_left_c + 20 && c <= box_left_c + MENU_NFO_W - 21);
+            bool skip_body   = (c >= text_c0 && c <= text_c1 &&
+                                ((r >= box_top_r + 3 && r <= box_top_r + 9) ||
+                                 r == box_top_r + 11 || r == box_top_r + 14));
+            if (skip_header || skip_body) {
+                positioned = false;
+                continue;
+            }
+            if (len + 80 >= (int)buf_cap) break;
+
+            MenuSubPx *tp = &s_menu_sub[r * 2][c];
+            MenuSubPx *bp = &s_menu_sub[r * 2 + 1][c];
+            MenuCell cell;
+            memset(&cell, 0, sizeof(cell));
+            int nt, nb;
+            const RGB *rt = menu_ramp(tp->mat, &nt);
+            const RGB *rb = menu_ramp(bp->mat, &nb);
+            int it = (int)lroundf(menu_clampf(tp->pos, 0.0f, (float)(nt - 1)));
+            int ib = (int)lroundf(menu_clampf(bp->pos, 0.0f, (float)(nb - 1)));
+
+            if (tp->mat == MM_NONE && bp->mat == MM_NONE) {
+                float g = menu_clampf(s_menu_glow[r][c], 0.0f, 1.0f);
+                if (g >= 0.13f) {
+                    // Smooth radial transparent halo (zero Bayer square-column artifacts)
+                    uint8_t lvl = (g >= 0.56f) ? 3 : ((g >= 0.30f) ? 2 : 1);
+                    float u = menu_clampf((g - 0.13f) / 0.55f, 0.0f, 1.0f);
+                    cell.glyph = lvl;
+                    cell.fg.r = (uint8_t)(88.0f  + 142.0f * u);
+                    cell.fg.g = (uint8_t)(13.0f  + 60.0f  * u * u);
+                    cell.fg.b = (uint8_t)(10.0f  + 8.0f   * u);
+                }
+            } else if (tp->mat == MM_NONE) {
+                cell.glyph = 6; cell.fg = rb[ib];
+            } else if (bp->mat == MM_NONE) {
+                cell.glyph = 5; cell.fg = rt[it];
+            } else if (tp->mat == bp->mat &&
+                       ((tp->mat == MM_FIRE) ? (it == ib) : (fabsf(tp->pos - bp->pos) <= 1.25f))) {
+                float p = menu_clampf((tp->pos + bp->pos) * 0.5f, 0.0f, (float)(nt - 1));
+                int a = (int)floorf(p);
+                float t = p - (float)a;
+                if (a >= nt - 1) { a = nt - 2; t = 1.0f; }
+                if (t < 0.16f)      { cell.glyph = 4; cell.fg = rt[a]; }
+                else if (t > 0.84f) { cell.glyph = 4; cell.fg = rt[a + 1]; }
+                else {
+                    cell.glyph = (t < 0.38f) ? 1 : ((t < 0.62f) ? 2 : 3);
+                    cell.fg = rt[a + 1];
+                    cell.bg = rt[a];
+                    cell.has_bg = 1;
+                }
+            } else {
+                cell.glyph = 5; cell.fg = rt[it]; cell.has_bg = 1; cell.bg = rb[ib];
+            }
+
+            if (!positioned) {
+                len += snprintf(buf + len, buf_cap - (size_t)len, "\033[%d;%dH", r + 1, c + 1);
+                positioned = true;
+            }
+            int want_bg = cell.has_bg ? ((cell.bg.r << 16) | (cell.bg.g << 8) | cell.bg.b) : -1;
+            if (want_bg != cur_bg) {
+                if (want_bg < 0) len += snprintf(buf + len, buf_cap - (size_t)len, "\033[49m");
+                else len += snprintf(buf + len, buf_cap - (size_t)len, "\033[48;2;%d;%d;%dm", cell.bg.r, cell.bg.g, cell.bg.b);
+                cur_bg = want_bg;
+            }
+            if (cell.glyph != 0) {
+                int want_fg = (cell.fg.r << 16) | (cell.fg.g << 8) | cell.fg.b;
+                if (want_fg != cur_fg) {
+                    len += snprintf(buf + len, buf_cap - (size_t)len, "\033[38;2;%d;%d;%dm", cell.fg.r, cell.fg.g, cell.fg.b);
+                    cur_fg = want_fg;
+                }
+            }
+            const char *g = GLYPHS[cell.glyph];
+            while (*g) buf[len++] = *g++;
+        }
+    }
+    if (len + 8 < (int)buf_cap) len += snprintf(buf + len, buf_cap - (size_t)len, "\033[0m");
+    return len;
 }
 
 static bool run_setup_menu(void) {
@@ -5217,20 +7334,23 @@ static bool run_setup_menu(void) {
     int short_break_min = (int)(g_short_break_duration / 60.0f);
     int long_break_min = (int)(g_long_break_duration / 60.0f);
     int sessions = g_sessions_before_long_break;
-    int style = g_is_dark_souls ? 1 : 0;
+    int style = g_is_bloodborne ? 2 : (g_is_dark_souls ? 1 : 0);
     int volume = g_sound_volume;
     int bgm = (int)g_music_track;
 
     load_user_config(&style, &focus_min, &short_break_min, &long_break_min, &sessions, &volume, &bgm);
-    g_is_dark_souls = (style == 1);
+    if (g_style_forced) {
+        style = g_is_bloodborne ? 2 : (g_is_dark_souls ? 1 : 0);
+    }
+    set_scene_style((SceneStyle)style);
     g_sound_volume = volume;
     g_sound_enabled = (volume > 0);
     g_music_track = (MusicTrack)bgm;
     if (g_shared_music_track) *g_shared_music_track = (int)g_music_track;
     if (g_shared_volume) *g_shared_volume = volume;
 
-    char menu_buf[8192];
     struct timespec ts = {0, 25000000L}; // 40 FPS
+    float menu_anim_t = 0.0f;
 
     safe_write(STDOUT_FILENO, "\033[2J\033[H", 7);
 
@@ -5241,11 +7361,14 @@ static bool run_setup_menu(void) {
             safe_write(STDOUT_FILENO, "\033[2J\033[H", 7);
         }
 
-        int box_w = 66;
-        int box_h = 18;
-        int start_r = (g_term_rows - box_h) / 2;
+        int box_w = MENU_NFO_W;
+        int box_h = 17;
+        // Stack the ASHEN emblem directly above the baroque steel .NFO menu frame
+        MenuLogoLayout logo_l = menu_logo_layout(g_term_cols, g_term_rows, box_h);
+        int logo_block = (logo_l.scale > 0) ? (logo_l.rows + logo_l.gap) : 0;
+        int start_r = (g_term_rows - box_h - logo_block) / 2 + 1 + logo_block;
         if (start_r < 1) start_r = 1;
-        int start_c = (g_term_cols - box_w) / 2;
+        int start_c = (g_term_cols - box_w) / 2 + 1;
         if (start_c < 1) start_c = 1;
 
         char ch;
@@ -5261,7 +7384,7 @@ static bool run_setup_menu(void) {
                     } else if (seq[1] == 'B') { // Down
                         selected = (selected + 1) % 7;
                     } else if (seq[1] == 'D') { // Left
-                        if (selected == 0) g_is_dark_souls = !g_is_dark_souls;
+                        if (selected == 0) { style = (style + 2) % 3; set_scene_style((SceneStyle)style); }
                         else if (selected == 1) { focus_min = (focus_min > 5) ? focus_min - 5 : 5; }
                         else if (selected == 2) { short_break_min = (short_break_min > 1) ? short_break_min - 1 : 1; }
                         else if (selected == 3) { long_break_min = (long_break_min > 5) ? long_break_min - 5 : 5; }
@@ -5269,7 +7392,7 @@ static bool run_setup_menu(void) {
                         else if (selected == 5) { volume = (volume >= 10) ? volume - 10 : 0; }
                         else if (selected == 6) { bgm = (bgm + 2) % 3; g_music_track = (MusicTrack)bgm; if (g_shared_music_track) *g_shared_music_track = bgm; }
                     } else if (seq[1] == 'C') { // Right
-                        if (selected == 0) g_is_dark_souls = !g_is_dark_souls;
+                        if (selected == 0) { style = (style + 1) % 3; set_scene_style((SceneStyle)style); }
                         else if (selected == 1) { focus_min = (focus_min < 120) ? focus_min + 5 : 120; }
                         else if (selected == 2) { short_break_min = (short_break_min < 30) ? short_break_min + 1 : 30; }
                         else if (selected == 3) { long_break_min = (long_break_min < 60) ? long_break_min + 5 : 60; }
@@ -5278,24 +7401,6 @@ static bool run_setup_menu(void) {
                         else if (selected == 6) { bgm = (bgm + 1) % 3; g_music_track = (MusicTrack)bgm; if (g_shared_music_track) *g_shared_music_track = bgm; }
                     } else if (strcmp(seq, "[200~") == 0) {
                         drain_bracketed_paste();
-                    } else if (seq[1] == '<') {
-                        int btn = 0, mx = 0, my = 0;
-                        char mode = 'M';
-                        if (sscanf(seq + 2, "%d;%d;%d%c", &btn, &mx, &my, &mode) >= 3 && mode == 'M') {
-                            if (btn == 64) {
-                                selected = (selected + 6) % 7;
-                            } else if (btn == 65) {
-                                selected = (selected + 1) % 7;
-                            } else if (btn == 0) {
-                                int row_idx = my - (start_r + 5);
-                                if (row_idx >= 0 && row_idx <= 6) {
-                                    selected = row_idx;
-                                }
-                            } else if (btn == 1) {
-                                in_menu = false;
-                                break;
-                            }
-                        }
                     }
                 }
                 continue;
@@ -5306,7 +7411,7 @@ static bool run_setup_menu(void) {
             } else if (ch == 's' || ch == 'S' || ch == 'j' || ch == 'J') {
                 selected = (selected + 1) % 7;
             } else if (ch == 'a' || ch == 'A' || ch == 'h' || ch == '-' || ch == '_') {
-                if (selected == 0) g_is_dark_souls = !g_is_dark_souls;
+                if (selected == 0) { style = (style + 2) % 3; set_scene_style((SceneStyle)style); }
                 else if (selected == 1) { focus_min = (focus_min > 5) ? focus_min - 5 : 5; }
                 else if (selected == 2) { short_break_min = (short_break_min > 1) ? short_break_min - 1 : 1; }
                 else if (selected == 3) { long_break_min = (long_break_min > 5) ? long_break_min - 5 : 5; }
@@ -5314,7 +7419,7 @@ static bool run_setup_menu(void) {
                 else if (selected == 5) { volume = (volume >= 10) ? volume - 10 : 0; }
                 else if (selected == 6) { bgm = (bgm + 2) % 3; g_music_track = (MusicTrack)bgm; if (g_shared_music_track) *g_shared_music_track = bgm; }
             } else if (ch == 'd' || ch == 'D' || ch == 'l' || ch == '+' || ch == '=') {
-                if (selected == 0) g_is_dark_souls = !g_is_dark_souls;
+                if (selected == 0) { style = (style + 1) % 3; set_scene_style((SceneStyle)style); }
                 else if (selected == 1) { focus_min = (focus_min < 120) ? focus_min + 5 : 120; }
                 else if (selected == 2) { short_break_min = (short_break_min < 30) ? short_break_min + 1 : 30; }
                 else if (selected == 3) { long_break_min = (long_break_min < 60) ? long_break_min + 5 : 60; }
@@ -5333,127 +7438,123 @@ static bool run_setup_menu(void) {
         if (!in_menu) break;
 
         int len = 0;
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len, "\033[H");
+        // DEC Mode 2026 Synchronized Output: atomic terminal paint (zero flicker)
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[?2026h\033[H");
+        len += render_menu_ansi_backdrop(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                                         g_term_cols, g_term_rows,
+                                         start_r, start_c, box_w, box_h,
+                                         menu_anim_t);
 
-        // Border & Header
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╔════════════════════════════════════════════════════════════════╗\033[0m",
-            start_r, start_c);
+        // Transparent .NFO Header (padded across cols 20..57 so top root tendrils stay intact)
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+            "\033[%d;%dH\033[49m      \033[1;38;2;224;228;240mS E S S I O N   S E T U P\033[0;49m       \033[0m",
+            start_r + 1, start_c + 20);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;255;210;110m║                  BONFIRE POMODORO SETUP                        ║\033[0m",
-            start_r + 1, start_c);
-
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;180;120;60m║            Configure your session before kindling              ║\033[0m",
-            start_r + 2, start_c);
-
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╠════════════════════════════════════════════════════════════════╣\033[0m",
-            start_r + 3, start_c);
-
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║                                                                ║\033[0m",
-            start_r + 4, start_c);
-
-        // Row 0: Style
-        const char *style_str = g_is_dark_souls ? "Dark Souls Bonfire" : "Classic Wood Fireplace";
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-23s ►          \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 5, start_c,
-            (selected == 0) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 0) ? "▶ " : "  ",
-            "[1] Fireplace Style:",
-            style_str);
-
-        // Row 1: Focus
-        char foc_str[32];
+        // Prepare values for the 7 .NFO dot-leader rows
+        const char *style_str = (style == 2) ? "Bloodborne Hunter's Lamp" :
+                               ((style == 1) ? "Dark Souls Bonfire" : "Classic Wood Fireplace");
+        char foc_str[32], sb_str[32], lb_str[32], sess_str[32];
         snprintf(foc_str, sizeof(foc_str), "%d min", focus_min);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-23s ►          \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 6, start_c,
-            (selected == 1) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 1) ? "▶ " : "  ",
-            "[2] Focus Duration:",
-            foc_str);
-
-        // Row 2: Short Break
-        char sb_str[32];
         snprintf(sb_str, sizeof(sb_str), "%d min", short_break_min);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-23s ►          \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 7, start_c,
-            (selected == 2) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 2) ? "▶ " : "  ",
-            "[3] Short Break:",
-            sb_str);
-
-        // Row 3: Long Break
-        char lb_str[32];
         snprintf(lb_str, sizeof(lb_str), "%d min", long_break_min);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-23s ►          \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 8, start_c,
-            (selected == 3) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 3) ? "▶ " : "  ",
-            "[4] Long Break:",
-            lb_str);
-
-        // Row 4: Sessions
-        char sess_str[32];
         snprintf(sess_str, sizeof(sess_str), "%d sessions", sessions);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-23s ►          \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 9, start_c,
-            (selected == 4) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 4) ? "▶ " : "  ",
-            "[5] Sessions / Cycle:",
-            sess_str);
-
-        // Row 5: Sound Volume
-        char vol_str[32];
-        if (volume == 0) snprintf(vol_str, sizeof(vol_str), "Mute (0%%)");
-        else snprintf(vol_str, sizeof(vol_str), "%d%%", volume);
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-23s ►          \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 10, start_c,
-            (selected == 5) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 5) ? "▶ " : "  ",
-            "[6] Sound Volume:",
-            vol_str);
-
-        // Row 6: Dark Souls Music
         const char *bgm_str = (bgm == MUSIC_TRACK_GWYN) ? "Gwyn (Lofi Slowed)" :
                               (bgm == MUSIC_TRACK_FIRELINK) ? "Firelink (Lofi)" : "Off (Crackle Only)";
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║%s %s%-21s   ◄ %-23s ►          \033[0m\033[48;2;16;10;8m║\033[0m",
-            start_r + 11, start_c,
-            (selected == 6) ? "\033[48;2;55;25;12m\033[1;38;2;255;235;130m" : "\033[48;2;16;10;8m\033[38;2;200;190;175m",
-            (selected == 6) ? "▶ " : "  ",
-            "[7] Dark Souls Music:",
-            bgm_str);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m║                                                                ║\033[0m",
-            start_r + 12, start_c);
+        static const char *NFO_LABELS[7] = {
+            "STYLE", "FOCUS DURATION", "SHORT BREAK", "LONG BREAK",
+            "SESSIONS / CYCLE", "SOUND VOLUME", "SOUNDTRACK"
+        };
+        const char *nfo_vals[7] = {
+            style_str, foc_str, sb_str, lb_str, sess_str, "", bgm_str
+        };
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╠════════════════════════════════════════════════════════════════╣\033[0m",
-            start_r + 13, start_c);
+        int text_c = start_c + 10;
+        for (int i = 0; i < 7; i++) {
+            bool act = (selected == i);
+            int lbl_len = (int)strlen(NFO_LABELS[i]);
+            int dots = 23 - lbl_len;
+            if (dots < 2) dots = 2;
+            char dot_buf[26];
+            memset(dot_buf, '.', (size_t)dots);
+            dot_buf[dots] = '\0';
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;220;190;140m║ [↑/↓ or 1-7] Navigate  [←/→] Adjust  [Enter/Space] Start       ║\033[0m",
-            start_r + 14, start_c);
+            len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                "\033[%d;%dH\033[49m  %s%s%s %s%s : ",
+                start_r + 3 + i, text_c,
+                act ? "\033[1;38;2;255;196;72m▸ " : "\033[38;2;122;126;144m  ",
+                act ? "\033[1;38;2;255;252;242m" : "\033[0;49m\033[38;2;174;178;194m",
+                NFO_LABELS[i],
+                act ? "\033[0;49m\033[38;2;190;112;42m" : "\033[38;2;74;78;94m",
+                dot_buf);
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[38;2;160;140;120m║ [Q] Exit                                                       ║\033[0m",
-            start_r + 15, start_c);
+            if (i == 5) {
+                // Visual ember volume bar: ▓▓▓▓▓▓░░░░ 60% (padded cleanly to right edge of text band)
+                int filled = volume / 10;
+                if (act) len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[1;38;2;255;180;56m◄ ");
+                else     len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "  ");
+                for (int b = 0; b < 10; b++) {
+                    if (b < filled) {
+                        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                            "%s▓", act ? "\033[38;2;255;168;48m" : "\033[38;2;210;110;36m");
+                    } else {
+                        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                            "\033[38;2;74;78;94m░");
+                    }
+                }
+                if (volume == 0) {
+                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                        "%s Mute%s          \033[0m",
+                        act ? "\033[1;38;2;255;238;168m" : "\033[38;2;160;164;180m",
+                        act ? " \033[1;38;2;255;180;56m►" : "  ");
+                } else {
+                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                        "%s %3d%%%s          \033[0m",
+                        act ? "\033[1;38;2;255;238;168m" : "\033[38;2;214;218;230m",
+                        volume,
+                        act ? " \033[1;38;2;255;180;56m►" : "  ");
+                }
+            } else {
+                int vlen = (int)strlen(nfo_vals[i]);
+                int pad = 24 - vlen;
+                if (pad < 0) pad = 0;
+                if (act) {
+                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                        "\033[1;38;2;255;180;56m◄ \033[1;38;2;255;238;168m%s \033[1;38;2;255;180;56m►%*s\033[0m",
+                        nfo_vals[i], pad, "");
+                } else {
+                    len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+                        "  \033[38;2;214;218;230m%s%*s\033[0m",
+                        nfo_vals[i], pad + 2, "");
+                }
+            }
+        }
 
-        len += snprintf(menu_buf + len, sizeof(menu_buf) - len,
-            "\033[%d;%dH\033[48;2;16;10;8m\033[1;38;2;220;140;40m╚════════════════════════════════════════════════════════════════╝\033[0m",
-            start_r + 16, start_c);
+        // Contextual breathing ember CTA centered cleanly inside the interior text band
+        const char *cta_str = (style == 2) ? "[  ENTER · AWAKEN THE LAMP  ]" :
+                             ((style == 1) ? "[  ENTER · KINDLE THE FLAME  ]" :
+                                             "[  ENTER · LIGHT THE HEARTH  ]");
+        int cta_vis_len = (int)strlen(cta_str) - 1; // '·' is 2 UTF-8 bytes, 1 display col
+        int cta_pad_l = (58 - cta_vis_len) / 2;
+        if (cta_pad_l < 0) cta_pad_l = 0;
+        int cta_pad_r = 58 - cta_vis_len - cta_pad_l;
+        if (cta_pad_r < 0) cta_pad_r = 0;
+        float pulse = 0.5f + 0.5f * sinf(menu_anim_t * 3.2f);
+        int cr = 235 + (int)(20.0f * pulse);
+        int cg = 152 + (int)(62.0f * pulse);
+        int cb = 52  + (int)(48.0f * pulse);
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+            "\033[%d;%dH\033[49m%*s\033[1;38;2;%d;%d;%dm%s\033[0;49m%*s\033[0m",
+            start_r + 11, start_c + 10, cta_pad_l, "", cr, cg, cb, cta_str, cta_pad_r, "");
 
-        safe_write(STDOUT_FILENO, menu_buf, len);
+        // Understated 1-line controls legend centered cleanly below the burning root bridge
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len,
+            "\033[%d;%dH\033[49m          \033[38;2;138;142;160m↑↓\033[38;2;96;100;116m nav · \033[38;2;138;142;160m←→\033[38;2;96;100;116m adjust · \033[38;2;138;142;160m1-7\033[38;2;96;100;116m jump · \033[38;2;138;142;160mq\033[38;2;96;100;116m exit          \033[0m",
+            start_r + 14, start_c + 10);
+
+        len += snprintf(s_menu_buf + len, sizeof(s_menu_buf) - (size_t)len, "\033[?2026l");
+        safe_write(STDOUT_FILENO, s_menu_buf, len);
+        menu_anim_t += 0.025f;
         nanosleep(&ts, NULL);
     }
 
@@ -5465,7 +7566,7 @@ static bool run_setup_menu(void) {
     g_music_track = (MusicTrack)bgm;
     if (g_shared_volume) *g_shared_volume = volume;
     if (g_shared_music_track) *g_shared_music_track = (int)g_music_track;
-    save_user_config(g_is_dark_souls ? 1 : 0, focus_min, short_break_min, long_break_min, sessions, volume, (int)g_music_track);
+    save_user_config(style, focus_min, short_break_min, long_break_min, sessions, volume, (int)g_music_track);
     g_focus_duration = (float)focus_min * 60.0f;
     g_short_break_duration = (float)short_break_min * 60.0f;
     g_long_break_duration = (float)long_break_min * 60.0f;
@@ -5524,7 +7625,16 @@ int main(int argc, char **argv) {
                 benchmark_frames = atoi(argv[++i]);
             }
         } else if (strcmp(argv[i], "--souls") == 0 || strcmp(argv[i], "--ds") == 0 || strcmp(argv[i], "--darksouls") == 0) {
-            g_is_dark_souls = true;
+            set_scene_style(STYLE_DARK_SOULS);
+            g_style_forced = true;
+            g_bonfire_lit = false;
+        } else if (strcmp(argv[i], "--bloodborne") == 0 || strcmp(argv[i], "--bb") == 0 || strcmp(argv[i], "--lamp") == 0 || strcmp(argv[i], "--hunter") == 0) {
+            set_scene_style(STYLE_BLOODBORNE);
+            g_style_forced = true;
+            g_bonfire_lit = false;
+        } else if (strcmp(argv[i], "--classic") == 0 || strcmp(argv[i], "--fireplace") == 0) {
+            set_scene_style(STYLE_CLASSIC_WOOD);
+            g_style_forced = true;
             g_bonfire_lit = false;
         } else if (strcmp(argv[i], "--bgm") == 0 && i + 1 < argc) {
             const char *b = argv[++i];
@@ -5554,13 +7664,26 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--fast") == 0) {
             g_realtime_mode = false;
             g_time_scale = 30.0f;
-        } else if ((strcmp(argv[i], "--wood") == 0 || strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--madeira") == 0) && i + 1 < argc) {
+        } else if ((strcmp(argv[i], "--wood-type") == 0 || strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--madeira") == 0) && i + 1 < argc) {
             const char *w = argv[++i];
             g_wood_type_forced = true;
             if (strcasecmp(w, "carvalho") == 0 || strcasecmp(w, "oak") == 0) g_wood_type = 0;
             else if (strcasecmp(w, "pinho") == 0 || strcasecmp(w, "pine") == 0) g_wood_type = 1;
             else if (strcasecmp(w, "betula") == 0 || strcasecmp(w, "birch") == 0) g_wood_type = 2;
             else if (strcasecmp(w, "cerejeira") == 0 || strcasecmp(w, "cherry") == 0) g_wood_type = 3;
+        } else if (strcmp(argv[i], "--wood") == 0) {
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                const char *w = argv[++i];
+                g_wood_type_forced = true;
+                if (strcasecmp(w, "carvalho") == 0 || strcasecmp(w, "oak") == 0) g_wood_type = 0;
+                else if (strcasecmp(w, "pinho") == 0 || strcasecmp(w, "pine") == 0) g_wood_type = 1;
+                else if (strcasecmp(w, "betula") == 0 || strcasecmp(w, "birch") == 0) g_wood_type = 2;
+                else if (strcasecmp(w, "cerejeira") == 0 || strcasecmp(w, "cherry") == 0) g_wood_type = 3;
+            } else {
+                set_scene_style(STYLE_CLASSIC_WOOD);
+                g_style_forced = true;
+                g_bonfire_lit = false;
+            }
         } else if (strcmp(argv[i], "--lit") == 0) {
             g_fire_state = FIRE_STATE_LIT_FOCUS;
             g_bonfire_lit = true;
@@ -5710,7 +7833,9 @@ int main(int argc, char **argv) {
         int target_min = (int)(g_cycle_duration / 60.0f);
         if (el_min >= 1) {
             char mode_desc[64];
-            if (g_is_dark_souls) {
+            if (g_is_bloodborne) {
+                snprintf(mode_desc, sizeof(mode_desc), "Bloodborne Hunter's Lamp");
+            } else if (g_is_dark_souls) {
                 snprintf(mode_desc, sizeof(mode_desc), "Dark Souls Bonfire (Coiled Sword)");
             } else {
                 snprintf(mode_desc, sizeof(mode_desc), "Teepee (%s)", WOOD_SPECIES[g_wood_type].name);

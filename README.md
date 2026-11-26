@@ -1,26 +1,54 @@
-# bonfire-pomodoro
-
-[![CI](https://github.com/GabrielBaiano/bonfire-pomodoro/actions/workflows/ci.yml/badge.svg)](https://github.com/GabrielBaiano/bonfire-pomodoro/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/GabrielBaiano/bonfire-pomodoro)](https://github.com/GabrielBaiano/bonfire-pomodoro/releases/latest)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-
-A Dark Souls-inspired physical bonfire Pomodoro timer rendered in 3D TrueColor ASCII art directly in your Linux terminal. Single C99 source file, zero external dependencies beyond libc and libm.
 <p align="center">
-  <img src="docs/media/dark_souls_bonfire.gif" alt="Dark Souls Bonfire" width="100%">
+  <img src="docs/media/ashen-logo.gif" alt="ASHEN" width="640">
 </p>
 
-## The Experience
+<p align="center">
+  <a href="https://github.com/GabrielBaiano/bonfire-pomodoro/actions/workflows/ci.yml"><img src="https://github.com/GabrielBaiano/bonfire-pomodoro/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/GabrielBaiano/bonfire-pomodoro/releases/latest"><img src="https://img.shields.io/github/v/release/GabrielBaiano/bonfire-pomodoro" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+</p>
 
-- **Kindle the Flame**: Press `[E]` to light the unlit bonfire. The coiled sword heats up, sparks burst in a radial explosion, and a roaring fire erupts around the skull bone mound.
-- **Dark Souls OST & Ambient Sound**: Embedded soundtracks (*Gwyn, Lord of Cinder* / "Plim Plim Plom" and *Firelink Shrine*) play mixed with crackling bonfire audio. The music automatically cuts off the moment the focus timer reaches 25 minutes and transitions to rest.
-- **Cycle Transitions**: When your focus session ends, the authentic Dark Souls *Item Discovery* chime rings, an on-screen banner appears, and the fire settles into smoldering embers for your break.
-- **Desktop Notifications**: Background desktop alerts via `notify-send` and terminal bell (`\a`) keep you on track even when the window is behind your editor or on another workspace.
-- **Continuous 360° Orbit**: Hit `Space` at any moment to toggle a continuous turntable camera loop orbiting the 3D coiled sword and flame.
-- **Smart Mute & Track Selector**: Press `[B]` to switch between Gwyn, Firelink Shrine, or crackle-only. Muting (`[M]`) silences ambient audio while keeping the end-of-cycle chime audible (~15%).
+A 3D TrueColor ANSI Pomodoro timer for the Linux terminal featuring a Dark Souls coiled-sword bonfire, a Bloodborne Hunter's Lamp, and a physical wood-burning hearth. Built as a single C99 source file with zero external dependencies beyond `libc` and `libm`.
+
+<p align="center">
+  <img src="docs/media/setup-menu.png" alt="Interactive ANSI Setup Menu" width="100%">
+</p>
+
+## Three Scenes
+
+### 1. Dark Souls Bonfire (`--souls`)
+Procedural helical coiled sword embedded in a skull and ash mound ringed by weathered stones, paired with *Gwyn, Lord of Cinder* and *Firelink Shrine* lofi soundtracks.
+
+<p align="center">
+  <img src="docs/media/scene-dark-souls-bonfire.png" alt="Dark Souls Bonfire" width="49%">
+  <img src="docs/media/bonfire-lit-banner.png" alt="Bonfire Lit Banner" width="49%">
+</p>
+
+### 2. Bloodborne Hunter's Lamp (`--bb`)
+Wrought-iron gallows lantern with three brass bells, spectral blue-violet glow, and Messengers emerging around the stone base when awakened.
+
+<p align="center">
+  <img src="docs/media/scene-bloodborne-lamp.png" alt="Bloodborne Hunter's Lamp" width="49%">
+  <img src="docs/media/lantern-lit-banner.png" alt="Lantern Lit Banner" width="49%">
+</p>
+
+### 3. Classic Wood Fireplace (`--classic`)
+Physical wood combustion simulation with convective cellular automata flames, thermal diffusion along wood grain, charring, and log collapse physics.
+
+<p align="center">
+  <img src="docs/media/scene-wood-fireplace.png" alt="Classic Wood Fireplace" width="100%">
+</p>
+
+## Highlights
+
+- **Kindle & Rest Cycles**: Press `[E]` to light the flame and start your focus session. When the timer completes, a chime rings, a Soulsborne Trajan-style half-block banner fades across the flames, and the fire settles into smoldering embers for your break.
+- **Transparent Terminal Native**: Emits `\033[49m` sky transparency, CP437 shade halos (`░▒▓`), and DEC Mode 2026 synchronized updates for tear-free rendering over transparent terminal compositors.
+- **Embedded Audio Engine**: Streams 16-bit 22.05 kHz PCM audio directly to PipeWire / PulseAudio / ALSA user-space tools without linking SDL or OpenAL.
+- **Desktop Alerts & Session Log**: Triggers `notify-send` + terminal bell on phase transitions and records completed focus sessions to `~/.bonfire_history.json`.
 
 ## Installation
 
-### One-Line Install (Recommended)
+### One-Line Install
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/GabrielBaiano/bonfire-pomodoro/main/install.sh | bash
@@ -32,6 +60,12 @@ curl -sSL https://raw.githubusercontent.com/GabrielBaiano/bonfire-pomodoro/main/
 brew install GabrielBaiano/tap/bonfire-pomodoro
 ```
 
+### Arch Linux (AUR)
+
+```bash
+yay -S bonfire-pomodoro
+```
+
 ### Build from Source
 
 ```bash
@@ -41,78 +75,46 @@ make
 make install
 ```
 
-Make sure `~/.local/bin` is in your `$PATH`. You can then launch it from anywhere simply by typing `bonfire`.
-
-### Arch Linux (AUR)
-
-```bash
-# Using an AUR helper
-yay -S bonfire-pomodoro
-
-# Or build manually with makepkg
-cd packaging/aur
-makepkg -si
-```
-
-### Homebrew (macOS & Linux)
-
-```bash
-brew install GabrielBaiano/tap/bonfire-pomodoro
-```
+Ensure `~/.local/bin` is in your `$PATH`, then run `bonfire`.
 
 ## CLI Usage
 
 ```bash
-# Interactive setup menu (style, intervals, volume)
+# Launch interactive ASHEN setup menu
 bonfire
 
-# Direct launch into Dark Souls Bonfire mode
+# Direct launch into each scene
 bonfire --souls
+bonfire --bb
+bonfire --classic --wood-type carvalho
 
-# Choose background music track (gwyn, firelink, or off)
-bonfire --souls --bgm gwyn
+# Start already lit with custom focus duration (minutes) and soundtrack
+bonfire --souls --lit --time 25 --bgm gwyn
 
-# Set custom focus duration (in minutes)
-bonfire --souls --time 25
-
-# Classic wood fireplace mode with combustion physics
-bonfire --wood carvalho --time 45
-
-# View completed Pomodoro session logs
+# View completed Pomodoro session history
 bonfire --history
-
-# Fast preview mode (30x simulation speed)
-bonfire --fast
 ```
 
-## Interactive Controls
+## Keyboard Controls
 
-| Key / Mouse | Action |
+| Key | Action |
 | --- | --- |
-| `[E]` / `Enter` / `Right Click` | Kindle bonfire (when unlit/extinguished) or stoke sparks |
-| `Space` / `Middle Click` (or `g` / `t`) | Toggle continuous 360° turntable rotation loop |
-| `Left Click + Drag` | Orbit camera yaw and pitch in real-time 3D |
-| `Mouse Wheel` | Tilt camera pitch (or `↑`/`↓`) |
-| `[P]` | Pause / resume current Pomodoro phase |
-| `[S]` | Skip phase (prompts confirmation dialog) |
-| `[B]` | Cycle soundtrack (Gwyn -> Firelink Shrine -> Off) |
-| `[M]` | Mute / unmute ambient audio (keeps subtle alert chime) |
-| `[` / `]` or `-` / `+` | Decrease / increase sound volume (10% steps) |
-| `←` / `→` or `a` / `d` or `h` / `l` | Orbit camera yaw (rotate left/right) |
-| `↑` / `↓` or `w` / `s` or `k` / `j` | Orbit camera pitch (tilt up/down) |
-| `r` | Rekindle / restart session from unlit state |
-| `q` | Quit session (prompts confirmation dialog) |
+| `E` / `Enter` | Kindle flame, awaken lamp, or stoke sparks (`F` adds wood in classic mode) |
+| `Space` (or `g` / `t`) | Toggle continuous 360° turntable camera orbit |
+| `←` `→` or `a` `d` or `h` `l` | Orbit camera yaw |
+| `↑` `↓` or `w` `s` or `k` `j` | Tilt camera pitch |
+| `P` | Pause / resume current Pomodoro phase |
+| `S` | Skip current phase (opens confirmation prompt) |
+| `B` | Cycle soundtrack (`Gwyn` -> `Firelink Shrine` -> `Crackle Only`) |
+| `M` | Mute / unmute ambient audio (preserves subtle end-of-cycle chime) |
+| `-` / `+` or `[` / `]` | Adjust audio volume in 10% steps |
+| `R` | Reset session to unlit state |
+| `Q` | Quit (opens confirmation prompt) |
 
-## Technical Highlights
+## Architecture
 
-- **3D Raymarching in ANSI**: Procedural coiled sword (helical SDF geometry), skull mound, and stone hearth rendered using character half-block sub-pixels (`▀`) with 24-bit TrueColor at 60 FPS.
-- **Physical Combustion Simulation**: Convective cellular automata fire with thermal diffusion along wood grain, moisture evaporation, charring, and physical log breakage.
-- **Embedded Audio Engine**: Embedded 16-bit 22.05 kHz PCM streams directly through user-space pipes into system sound servers without linking SDL, OpenAL, or external sound libraries.
-- **Config & History Persistence**: Settings persist to `~/.fireplace_conf` and completed focus intervals log to `~/.bonfire_history.json`.
-## Architecture & Notes
-
-Technical notes on the raymarching shader, thermal balance equations, and ragdoll log physics can be found in [docs/architecture.md](docs/architecture.md).
+Technical details on the 3D raymarching pipeline, thermal balance equations, and log physics are documented in [docs/architecture.md](docs/architecture.md).
 
 ## License
 
-This project is licensed under the [GNU General Public License v3.0](LICENSE).
+Licensed under the [GNU General Public License v3.0](LICENSE).

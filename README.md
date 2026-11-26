@@ -11,10 +11,6 @@
 
 A 3D TrueColor ANSI Pomodoro timer for Linux and macOS terminals featuring a Dark Souls coiled-sword bonfire, a Bloodborne Hunter's Lamp, and a physical wood-burning hearth. Built as a single C99 source file with zero external dependencies beyond `libc` and `libm`.
 
-<p align="center">
-  <img src="docs/media/setup-menu.png" alt="Interactive ANSI Setup Menu" width="100%">
-</p>
-
 ## Three Scenes
 
 ### 1. Dark Souls Bonfire (`--souls`)
